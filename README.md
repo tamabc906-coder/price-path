@@ -47,10 +47,26 @@ venv\Scripts\python -m pytest -q
 5. 39 mã là danh mục chọn *hôm nay* → mọi thống kê lịch sử có survivorship bias; tần suất tăng lịch sử
    của nhóm này cao hơn thị trường, nên mốc "luôn tăng" khó thắng — đó là chủ đích.
 
+## Kết quả đo (tái lập bằng script trong `scripts/`)
+
+- `measure_features.py` → `reports/measure-20-phien-2026-09-19.md`: trong 20 phiên quá khứ, **khối lượng** là thứ có
+  tín hiệu nhất quán (KL dồn phiên tăng, KL ≥2×: 7–8/11 năm hơn mua-đại); VN-Index "tăng" chỉ 2/11 → bỏ trục;
+  ST×EMA10 4/11 → hạ cấp. Trục chế độ hiện tại: vol · upvol · st · spike · climax · gap.
+- `evaluate.py` → `reports/eval-2026-09-19.md` (walk-forward 2021–2026, 54.369 hàng):
+  - **Nón đúng cỡ:** coverage 80 % = 78–83 %, 90 % = 88–93 % ở **5/5 năm trọn** (h=10) — nhờ tự sửa cỡ; bản
+    không sửa cỡ hụt nặng năm 2022 (68 %). **ĐẠT** ngưỡng kế hoạch.
+  - **Ô chế độ gần như không làm nón hẹp hơn:** pinball 1,894 vs nón ngây thơ (pool toàn cục × biến động) 1,901 —
+    khác 0,4 %. Độ rộng nón đến từ biến động của mã, không phải từ nhãn chế độ.
+  - **P(tăng) từ tần suất ô: yếu.** Trung vị 0,55, chỉ 8,5 % hàng ≥ 0,60; thua "luôn tăng" ở năm bò; Brier hơn toàn
+    cục 3/6 năm. Lệnh P ≥ 0,58 giữ 10 phiên: hơn mua-đại 4/6 năm nhưng chủ yếu "đỡ lỗ hơn" ở năm xấu.
+  - Coverage theo ngày dao động mạnh (39 mã cùng phiên tương quan): cửa sổ 20 phiên chỉ 8–38 % số ngày nằm trong
+    [76; 84]; cửa sổ **60 phiên** 42–53 % trong [76; 84] và ~75 % trong [72; 88] → tab Lịch sử chấm bằng cửa sổ 60
+    phiên, dải chấp nhận ±6 điểm.
+
 ## Tiến độ
 
 - [x] **G0** (19/09/2026): khung dự án, venv, kho lịch sử 40 mã, 7 test.
-- [ ] G1: đặc trưng, chế độ, nón bootstrap, conformal, `scripts/evaluate.py` + báo cáo coverage theo năm.
+- [x] **G1** (19/09/2026): `model/features.py`, `regime.py`, `cone.py`, `conformal.py`, `scripts/evaluate.py`; 14 test; ĐẠT ngưỡng coverage.
 - [ ] G2: LightGBM walk-forward + gate.
 - [ ] G3: job daily + GitHub Actions.
 - [ ] G4: PWA + push.
