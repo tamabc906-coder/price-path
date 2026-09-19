@@ -8,3 +8,5 @@ python-dotenv==1.0.1
 pywebpush==2.0.3
 py-vapid==1.9.1
 pytest==8.3.4
+# chỉ máy dev: scripts/make_icons.py
+pillow==11.0.0
