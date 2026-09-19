@@ -23,7 +23,34 @@ Hạ tầng đúng khuôn candle-radar: GitHub Actions chạy job sau ATC (15:40
 install.bat                                    # tạo venv, cài thư viện (một lần)
 venv\Scripts\python -m scripts.fetch_history   # tải trọn lịch sử vào data/history.json (một lần)
 venv\Scripts\python -m pytest -q
+run-daily-local.bat --dry-run                  # xem dự báo hôm nay, không ghi gì (~35 s)
+run-daily-local.bat                            # ghi docs/data/*.json, không push
+venv\Scripts\python -m scripts.backfill --sessions 90 --yes   # chạy lại 90 phiên: mồi hệ số giãn + sổ chấm (4 phút)
 ```
+
+## Job hằng ngày (`job/run_daily.py`, GitHub Actions 15:40 T2–T6)
+
+1. Danh mục KingStock → 30 ngày nến DNSE gần nhất + VNINDEX → nối vào kho `data/history.json` (mã mới → tải trọn).
+2. Nguồn chưa chốt (≥ 20 % mã thanh khoản thiếu nến ATC 14:45) → không ghi gì, cron dự phòng 16:10/16:50/18:15 thử lại.
+3. **Chấm điểm trước, dự báo sau:** nón phát 5/10/20 phiên trước (file `docs/data/daily/<ngày>.json`) đến hạn → tỷ lệ
+   mã trúng → cập nhật hệ số giãn (`model/artifacts/conformal_state.json`). Rồi mới dựng nón hôm nay.
+4. Mỗi mã: ô chế độ → pool → 2.000 đường bootstrap (seed theo mã+ngày, chạy lại ra cùng nón) → phân vị 5…95 tại
+   +5/+10/+20 → giãn theo s → giá; P(tăng) = tần suất ô (LightGBM chỉ khi `gate.json` bật); 2 kịch bản A/B.
+5. Push mã có `p10 ≥ p_min` (0,58) và `n ≥ n_min` (200); > 6 mã → một thông báo tổng hợp. Cài đặt: `docs/data/settings.json`.
+6. Ghi `latest.json` (bảng 39 mã + verdict + lịch sử), `bars.json` (60 nến/mã), `daily/<ngày>.json`, `state.json`.
+   Bot commit `docs/data/ data/history.json model/artifacts/conformal_state.json [skip ci]`.
+
+**Verdict "đúng cỡ":** coverage nón 80 % tại +10 phiên, cửa sổ **60 phiên**, dải 74–86 %. (20 phiên dao động quá mạnh
+vì 39 mã cùng ngày tương quan — evaluate cho thấy 60 phiên nằm trong dải ~75 % số ngày.)
+
+## Đưa lên GitHub (làm một lần, trên web vì máy không có `gh`)
+
+1. Tạo repo public `price-path` → `git remote add origin …` → `git push -u origin master:main`.
+2. Settings → Pages: branch `main`, folder `/docs`.
+3. `venv\Scripts\python -m job.gen_vapid` → dán 3 dòng vào Settings → Secrets and variables → Actions
+   (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`); `PUSH_SUBS_FALLBACK` thêm sau khi điện thoại đăng ký (G4).
+   Chưa có VAPID thì job vẫn chạy, chỉ bỏ qua push (`state.push.errors = ["Thiếu khoá VAPID"]`).
+4. Actions → daily → Run workflow để chạy lần đầu; xem `docs/data/latest.json` trên Pages.
 
 ## Dữ liệu
 
@@ -75,6 +102,6 @@ venv\Scripts\python -m pytest -q
 - [x] **G0** (19/09/2026): khung dự án, venv, kho lịch sử 40 mã, 7 test.
 - [x] **G1** (19/09/2026): `model/features.py`, `regime.py`, `cone.py`, `conformal.py`, `scripts/evaluate.py`; 14 test; ĐẠT ngưỡng coverage.
 - [x] **G2** (20/09/2026): `model/direction.py`, `scripts/train_direction.py`; cổng TẮT; 17 test.
-- [ ] G3: job daily + GitHub Actions.
+- [x] **G3** (20/09/2026): `job/forecast.py`, `run_daily.py`, `push.py`, `settings.py`, `scripts/backfill.py`, workflow; backfill 90 phiên → coverage 60p = 78 %; 20 test. Chưa có remote GitHub.
 - [ ] G4: PWA + push.
 - [ ] G5: chạy thật 1 tuần, so coverage.
