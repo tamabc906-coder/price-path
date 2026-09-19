@@ -63,11 +63,18 @@ venv\Scripts\python -m pytest -q
     [76; 84]; cửa sổ **60 phiên** 42–53 % trong [76; 84] và ~75 % trong [72; 88] → tab Lịch sử chấm bằng cửa sổ 60
     phiên, dải chấp nhận ±6 điểm.
 
+- `train_direction.py` → `reports/walkforward-2026-09-20.md` (+ bản `-khong-vnindex.md`): **LightGBM TẮT.**
+  Brier 0,25–0,28 (tệ hơn tung xu), thắng tần suất ô 0–1/5 năm. Mô hình bám vào đặc trưng VN-Index (39 mã cùng
+  ngày cùng giá trị → ~250 mẫu độc lập/năm) rồi áp chế độ năm cũ sang năm mới (2023 đúng 42,8 %). Bỏ nhóm VN-Index
+  cũng chỉ về ~0,25, không thắng. Booster không ghi khi cổng tắt; `gate.json` giữ bảng để giao diện hiển thị.
+  Kết luận: **hướng 5–10 phiên tới không dự đoán được** bằng dữ liệu giá/KL ở cấp mã — app hiện P(tăng) = tần suất
+  ô và nói rõ nó gần mốc chung.
+
 ## Tiến độ
 
 - [x] **G0** (19/09/2026): khung dự án, venv, kho lịch sử 40 mã, 7 test.
 - [x] **G1** (19/09/2026): `model/features.py`, `regime.py`, `cone.py`, `conformal.py`, `scripts/evaluate.py`; 14 test; ĐẠT ngưỡng coverage.
-- [ ] G2: LightGBM walk-forward + gate.
+- [x] **G2** (20/09/2026): `model/direction.py`, `scripts/train_direction.py`; cổng TẮT; 17 test.
 - [ ] G3: job daily + GitHub Actions.
 - [ ] G4: PWA + push.
 - [ ] G5: chạy thật 1 tuần, so coverage.
