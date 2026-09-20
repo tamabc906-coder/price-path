@@ -1,0 +1,9 @@
+{
+  "p_min": 0.58,
+  "n_min": 200,
+  "require_q25": false,
+  "digest_threshold": 6,
+  "heartbeat": false,
+  "history_days": 30,
+  "scenarios": true
+}

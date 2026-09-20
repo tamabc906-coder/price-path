@@ -43,6 +43,16 @@ venv\Scripts\python -m scripts.backfill --sessions 90 --yes   # chạy lại 90 
 **Verdict "đúng cỡ":** coverage nón 80 % tại +10 phiên, cửa sổ **60 phiên**, dải 74–86 %. (20 phiên dao động quá mạnh
 vì 39 mã cùng ngày tương quan — evaluate cho thấy 60 phiên nằm trong dải ~75 % số ngày.)
 
+## Giao diện (`docs/`, GitHub Pages)
+
+JS thuần, không thư viện; đọc `data/latest.json` + `data/bars.json` (`cache: no-cache`, SW ép `reload`). Tab **Hôm nay**:
+thẻ mỗi mã = giá · chip chế độ · nón SVG (28 nến + dải 50/80/90 % + trung vị + kịch bản A/B) · P(tăng) 5p/10p kèm
+**mốc chung** · n mẫu; mã qua ngưỡng lên đầu. **Biểu đồ**: nón lớn có dải KL, bảng phân vị, "vì sao nón có hình này".
+**Sổ chấm**: ô lớn verdict 60 phiên, dải 30 ô rộng/đúng/hẹp, bảng từng phiên. **Cài đặt**: đăng ký push (dán Secret),
+ngưỡng (chỉ đọc), bảng cổng LightGBM, hệ số giãn, hệ thống. Sửa app.js/styles.css → tăng `?v=` trong `index.html`
+và bảo người dùng đóng hẳn app (PWA giữ bản cũ). Chụp thử: `python -m http.server -d docs 8765` + Chrome headless
+bọc iframe 420 px (Chrome không cho cửa sổ < 500 px).
+
 ## Đưa lên GitHub (làm một lần, trên web vì máy không có `gh`)
 
 1. Tạo repo public `price-path` → `git remote add origin …` → `git push -u origin master:main`.
@@ -103,5 +113,6 @@ vì 39 mã cùng ngày tương quan — evaluate cho thấy 60 phiên nằm tron
 - [x] **G1** (19/09/2026): `model/features.py`, `regime.py`, `cone.py`, `conformal.py`, `scripts/evaluate.py`; 14 test; ĐẠT ngưỡng coverage.
 - [x] **G2** (20/09/2026): `model/direction.py`, `scripts/train_direction.py`; cổng TẮT; 17 test.
 - [x] **G3** (20/09/2026): `job/forecast.py`, `run_daily.py`, `push.py`, `settings.py`, `scripts/backfill.py`, workflow; backfill 90 phiên → coverage 60p = 78 %; 20 test. Chưa có remote GitHub.
-- [ ] G4: PWA + push.
+- [x] **G4** (20/09/2026): PWA `docs/` 4 tab (Hôm nay · Biểu đồ · Sổ chấm · Cài đặt), nón SVG + 2 kịch bản, đăng ký push
+  kiểu candle-radar (dán Secret). Chụp headless 420 px OK. Chờ: repo GitHub + Pages + VAPID vào `docs/config.js`.
 - [ ] G5: chạy thật 1 tuần, so coverage.

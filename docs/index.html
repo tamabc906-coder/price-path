@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3B2A6B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Price Path</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="logo" viewBox="0 0 120 120">
+    <rect width="120" height="120" rx="28" fill="#3B2A6B"/>
+    <path d="M40 18 H75 A29 29 0 0 1 75 76 H40 Z" fill="#E3B54D" fill-opacity="0.30"/>
+    <path d="M40 27 H70 A20 20 0 0 1 70 67 H40 Z" fill="#E3B54D" fill-opacity="0.60"/>
+    <path d="M40 35 H64 A12 12 0 0 1 64 59 H40 Z" fill="#E3B54D"/>
+    <line x1="44" y1="47" x2="101" y2="47" stroke="#F7F4EC" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 7"/>
+    <rect x="22" y="18" width="18" height="84" rx="6" fill="#E3B54D"/>
+  </symbol>
+  <symbol id="i-today" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 12 L13 15 L20 6"/><path d="M13 15 C16 12 18 10 20 6 L20 11 M20 6 L15 6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-6"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+</defs></svg>
+
+<main id="main">
+  <section class="panel on" id="p-today" role="tabpanel">
+    <div class="head">
+      <div class="row">
+        <div class="brand"><svg><use href="#logo"/></svg><div class="title">PRICE PATH</div></div>
+        <span class="kicker" id="todayKicker">—</span>
+      </div>
+      <div class="sub" id="todaySub">Nón xác suất 5 · 10 · 20 phiên</div>
+    </div>
+    <div class="strip" id="strip">Đang tải…</div>
+    <div class="sort" id="sort">
+      <span class="k">Sắp xếp</span>
+      <button type="button" data-sort="p10" aria-pressed="true">P(tăng) 10p</button>
+      <button type="button" data-sort="narrow" aria-pressed="false">Nón hẹp</button>
+      <button type="button" data-sort="sym" aria-pressed="false">Mã A→Z</button>
+    </div>
+    <div class="cards" id="todayBody"></div>
+    <div class="foot" id="todayFoot"></div>
+  </section>
+
+  <section class="panel" id="p-chart" role="tabpanel">
+    <div class="head">
+      <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Biểu đồ</div></div><span class="kicker" id="chartKicker">—</span></div>
+      <div class="sub">Nón 20 phiên tới + hai kịch bản xác suất cao nhất</div>
+    </div>
+    <div class="ctrl">
+      <label for="c-sym">Mã</label>
+      <select id="c-sym"></select>
+      <span class="sp"></span>
+      <span class="px" id="c-px">—</span><span class="chg" id="c-chg"></span>
+    </div>
+    <div class="chips pad" id="c-chips"></div>
+    <div class="cone big" id="c-cone"></div>
+    <div class="legend"><span><i class="o35"></i>50 %</span><span><i class="o2"></i>80 %</span><span><i class="o1"></i>90 %</span><span><i class="med"></i>trung vị</span><span><i class="sa"></i>Kịch bản A</span><span><i class="sb"></i>Kịch bản B</span></div>
+    <div class="tog"><div class="t"><b>Hai kịch bản xác suất cao nhất</b><span id="c-scen-note">2.000 đường mô phỏng gom thành 2 cụm theo hình dáng; vẽ tâm mỗi cụm kèm tỷ trọng</span></div><button type="button" class="tg on" id="c-scen" aria-label="Bật hai kịch bản"></button></div>
+    <div class="tbl" id="c-table"></div>
+    <div class="g2" id="c-stats"></div>
+    <div class="box" id="c-why"></div>
+  </section>
+
+  <section class="panel" id="p-history" role="tabpanel">
+    <div class="head">
+      <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Sổ chấm</div></div><span class="kicker" id="histKicker">—</span></div>
+      <div class="sub">Nón vẽ ra có đúng cỡ không? Chấm lại mỗi phiên bằng giá thật</div>
+    </div>
+    <div id="verdict"></div>
+    <div class="box" id="histGrid"></div>
+    <div class="tbl" id="histTable"></div>
+  </section>
+
+  <section class="panel" id="p-settings" role="tabpanel">
+    <div class="head">
+      <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Cài đặt</div></div><span class="kicker">v1</span></div>
+      <div class="sub">Thông báo · cổng máy học · tham số nón · hệ thống</div>
+    </div>
+    <div class="sec"><div class="card info">
+      <h3>01 · Thông báo điện thoại</h3>
+      <div class="state" id="pushState">Đang kiểm tra…</div>
+      <div class="btns"><button type="button" class="btn primary" id="pushBtn">Bật thông báo trên máy này</button><button type="button" class="btn" id="testBtn" hidden>Gửi thử</button></div>
+      <div id="subCodeWrap"></div>
+      <div class="more" id="pushHelp">Sau phiên 15:40 T2–T6, app chỉ báo mã có P(tăng 10p) qua ngưỡng và ô chế độ đủ mẫu. Quá 6 mã → một thông báo gộp.</div>
+      <div class="srow" id="thresholds"></div>
+    </div></div>
+    <div class="sec"><div class="card"><h3>02 · Lớp máy học (LightGBM) — xác suất hướng</h3><div id="gateBody"></div></div></div>
+    <div class="sec"><div class="card"><h3>03 · Nón</h3><div id="coneParams"></div></div></div>
+    <div class="sec"><div class="card"><h3>04 · Hệ thống</h3><div class="state" id="sysBody">—</div><div class="state" id="stateFoot"></div></div></div>
+    <div class="foot">Nón là thống kê quá khứ theo chế độ hiện tại, chưa trừ phí; không phải khuyến nghị. 39 mã là danh mục chọn hôm nay nên mọi thống kê lịch sử có thiên lệch sống sót. <a href="./" id="reload">Tải lại app</a></div>
+  </section>
+</main>
+
+<nav role="tablist" aria-label="Điều hướng">
+  <button role="tab" aria-selected="true" data-tab="today"><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
+  <button role="tab" aria-selected="false" data-tab="chart"><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
+  <button role="tab" aria-selected="false" data-tab="history"><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
+  <button role="tab" aria-selected="false" data-tab="settings"><svg><use href="#i-settings"/></svg><span>Cài đặt</span></button>
+</nav>
+
+<div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
+<script src="config.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
