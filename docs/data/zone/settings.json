@@ -1,0 +1,9 @@
+{
+  "windows": [10, 20, 40],
+  "max_bins": 60,
+  "va_pct": 0.7,
+  "zone_vol_mult": 1.2,
+  "buy_share_min": 0.58,
+  "sell_share_max": 0.42,
+  "big_lot_value_vnd": 500000000
+}

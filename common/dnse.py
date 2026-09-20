@@ -82,6 +82,11 @@ class DnseClient:
         today = datetime.now(TZ).date()
         return [b for b in self._get("stock", symbol, "1", 1) if b["d"] == today]
 
+    def minutes(self, symbol: str, days: int) -> list[dict]:
+        """Nến 1 phút `days` ngày lịch gần nhất, cũ → mới (DNSE lùi được ~70 ngày ≈ 47 phiên, đo 20/09/2026).
+        Dùng cho zone/backfill.py dựng tạm vùng giá khi chưa có tick thật."""
+        return self._get("stock", symbol, "1", days)
+
     def _get(self, path: str, symbol: str, resolution: str, days: int) -> list[dict]:
         global last_ok, last_error
         wait = THROTTLE_SECONDS - (time.monotonic() - self._last_call)

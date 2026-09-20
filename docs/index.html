@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=1">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -27,6 +27,7 @@
   <symbol id="i-today" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 12 L13 15 L20 6"/><path d="M13 15 C16 12 18 10 20 6 L20 11 M20 6 L15 6"/></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-6"/></symbol>
   <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-zone" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M5 5v14"/><path d="M5 8h9"/><path d="M5 12h14"/><path d="M5 16h6"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
 </defs></svg>
 
@@ -80,6 +81,32 @@
     <div class="tbl" id="histTable"></div>
   </section>
 
+  <section class="panel" id="p-zone" role="tabpanel">
+    <div class="head">
+      <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Vùng giá</div></div><span class="kicker" id="zoneKicker">—</span></div>
+      <div class="sub">Khớp lệnh 2 tháng gộp theo mức giá: mua nhiều ở đâu, bán nhiều ở đâu</div>
+    </div>
+    <div class="ctrl">
+      <label for="z-sym">Mã</label>
+      <select id="z-sym"></select>
+      <span class="sp"></span>
+      <span class="px" id="z-px">—</span>
+    </div>
+    <div class="sort" id="z-win">
+      <span class="k">Cửa sổ</span>
+      <button type="button" data-win="10" aria-pressed="false">10 phiên</button>
+      <button type="button" data-win="20" aria-pressed="false">20 phiên</button>
+      <button type="button" data-win="40" aria-pressed="true">40 phiên</button>
+    </div>
+    <div class="strip" id="z-strip">Đang tải…</div>
+    <div class="cone big zone" id="z-prof"></div>
+    <div class="legend"><span><i class="zb"></i>mua chủ động</span><span><i class="zs"></i>bán chủ động</span><span><i class="zx"></i>ATO/ATC</span><span><i class="zpoc"></i>POC</span><span><i class="zva"></i>Value Area 70 %</span><span><i class="zpx"></i>giá hiện tại</span></div>
+    <div class="tog"><div class="t"><b>Chỉ lệnh lớn (cá mập)</b><span id="z-big-note">Lệnh ≥ 500 triệu đ · chỉ có ở phiên tick thật</span></div><button type="button" class="tg off" id="z-big" aria-label="Chỉ lệnh lớn"></button></div>
+    <div class="tbl" id="z-buy"></div>
+    <div class="tbl" id="z-sell"></div>
+    <div class="box" id="z-why"></div>
+  </section>
+
   <section class="panel" id="p-settings" role="tabpanel">
     <div class="head">
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Cài đặt</div></div><span class="kicker">v1</span></div>
@@ -104,11 +131,12 @@
   <button role="tab" aria-selected="true" data-tab="today"><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
   <button role="tab" aria-selected="false" data-tab="chart"><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
   <button role="tab" aria-selected="false" data-tab="history"><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
+  <button role="tab" aria-selected="false" data-tab="zone"><svg><use href="#i-zone"/></svg><span>Vùng giá</span></button>
   <button role="tab" aria-selected="false" data-tab="settings"><svg><use href="#i-settings"/></svg><span>Cài đặt</span></button>
 </nav>
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=1"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

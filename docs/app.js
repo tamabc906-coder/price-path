@@ -211,6 +211,122 @@
   $("c-scen").addEventListener("click", () => { showScen = !showScen; try { localStorage.setItem("pp_scen", showScen ? "1" : "0"); } catch (_) {} renderChart(); renderToday(); });
   document.addEventListener("click", (ev) => { const el = ev.target.closest("[data-chart]"); if (el) { cur = el.dataset.chart; $("c-sym").value = cur; switchTab("chart"); } });
 
+  // ---------------------------------------------------------------- Vùng giá (zone/)
+  // Đọc data/zone/latest.json do zone/run_daily.py ghi — tải lười khi mở tab, độc lập với latest.json.
+  let Z = null, zcur = null, zwin = "40", zbig = false, zLoading = false;
+  try { zwin = localStorage.getItem("pp_zwin") || "40"; } catch (_) {}
+  const vol = (v) => (v == null ? "—" : v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + " tr" : v >= 1e3 ? Math.round(v / 1e3) + " k" : String(v));
+  const zsym = () => (Z && Z.symbols && Z.symbols[zcur]) || null;
+
+  async function loadZone() {
+    if (zLoading) return;
+    zLoading = true;
+    try {
+      const r = await fetch("data/zone/latest.json", { cache: "no-cache" });
+      if (!r.ok) throw new Error("Chưa có data/zone/latest.json — job vùng giá chưa chạy lần nào.");
+      Z = await r.json();
+      const syms = Object.keys(Z.symbols || {}).sort();
+      $("z-sym").innerHTML = syms.map((k) => `<option value="${esc(k)}">${esc(k)} — ${esc(Z.symbols[k].name)}</option>`).join("");
+      if (!zcur || !Z.symbols[zcur]) zcur = (cur && Z.symbols[cur]) ? cur : syms[0] || null;
+      if (zcur) $("z-sym").value = zcur;
+    } catch (err) {
+      $("z-strip").innerHTML = `<b>Chưa có dữ liệu.</b> ${esc(err.message)}`;
+      Z = null;
+    }
+    zLoading = false;
+  }
+
+  // Profile ngang: mỗi ô giá một hàng, thanh = mua (xanh) + bán (đỏ) + ATO/ATC (xám); mờ dần theo phần ước lượng.
+  function profileChart(p, price, W, big) {
+    const bins = p.bins, n = bins.length, w = p.bin;
+    const rowH = n > 40 ? 7 : n > 25 ? 9 : 12, top = 8, bot = 22, left = 44, right = 10;
+    const H = top + n * rowH + bot, plotW = W - left - right;
+    const tot = (b) => (big ? b[4] + b[5] : b[1] + b[2] + b[3]);
+    const vmax = Math.max(1, ...bins.map(tot));
+    const yTop = (i) => top + (n - 1 - i) * rowH;           // ô cao nhất ở trên
+    const yPrice = (v) => top + (n - (v - p.base) / w) * rowH;
+    const f1 = (v) => Math.round(v * 10) / 10;
+    const out = [`<rect width="${W}" height="${H}" fill="#fff"/>`];
+    // Value Area
+    out.push(`<rect x="${left}" y="${f1(yTop(p.va[1]))}" width="${plotW}" height="${f1((p.va[1] - p.va[0] + 1) * rowH)}" fill="${GOLD}" fill-opacity="0.16"/>`);
+    // Vùng mua/bán: dải màu sát trục giá
+    const zl = big ? [[p.big_buy_zones, UP], [p.big_sell_zones, DOWN]] : [[p.buy_zones, UP], [p.sell_zones, DOWN]];
+    zl.forEach(([zs, col]) => (zs || []).forEach((z) => {
+      const i0 = Math.round((z.lo - p.base) / w), i1 = Math.round((z.hi - p.base) / w) - 1;
+      out.push(`<rect x="${left - 4}" y="${f1(yTop(i1))}" width="3" height="${f1((i1 - i0 + 1) * rowH)}" fill="${col}"/>`);
+    }));
+    // Thanh
+    bins.forEach((b, i) => {
+      const t = tot(b); if (t <= 0) return;
+      const y = yTop(i) + 1, h = rowH - 2, k = plotW / vmax;
+      const est = big ? 0 : (b[6] || 0) / (b[1] + b[2] + b[3]);
+      const op = 1 - 0.55 * est;
+      const segs = big ? [[b[4], UP], [b[5], DOWN]] : [[b[1], UP], [b[2], DOWN], [b[3], "#B8B3A6"]];
+      let x = left;
+      segs.forEach(([v, col]) => { if (v > 0) { out.push(`<rect x="${f1(x)}" y="${f1(y)}" width="${f1(Math.max(0.6, v * k))}" height="${f1(h)}" fill="${col}" fill-opacity="${op.toFixed(2)}"/>`); x += v * k; } });
+    });
+    // POC
+    out.push(`<line x1="${left}" y1="${f1(yTop(p.poc) + rowH / 2)}" x2="${W - right}" y2="${f1(yTop(p.poc) + rowH / 2)}" stroke="${GOLDC}" stroke-width="1.5"/>`);
+    out.push(`<text x="${W - right}" y="${f1(yTop(p.poc) - 1)}" font-size="8" fill="${GOLD2}" text-anchor="end" font-family="Archivo,Arial">POC ${px(bins[p.poc][0] + w / 2)}</text>`);
+    // Nhãn giá: ≤ 10 nhãn
+    const step = Math.max(1, Math.ceil(n / 10));
+    for (let i = 0; i < n; i += step) out.push(`<text x="${left - 7}" y="${f1(yTop(i) + rowH / 2 + 3)}" font-size="8.5" fill="${MUTE}" text-anchor="end" font-family="Archivo,Arial">${px(bins[i][0])}</text>`);
+    // Giá hiện tại
+    if (price != null && price >= p.base && price <= p.base + n * w) {
+      const y = f1(yPrice(price));
+      out.push(`<line x1="${left - 6}" y1="${y}" x2="${W - right}" y2="${y}" stroke="#3B2A6B" stroke-width="1.2" stroke-dasharray="3 2"/>`);
+      out.push(`<text x="${W - right}" y="${y - 2}" font-size="8" fill="#3B2A6B" text-anchor="end" font-family="Archivo,Arial" font-weight="700">giá ${px(price)}</text>`);
+    }
+    out.push(`<text x="${left}" y="${H - 6}" font-size="8" fill="${MUTE}" font-family="Archivo,Arial">0</text>`);
+    out.push(`<text x="${W - right}" y="${H - 6}" font-size="8" fill="${MUTE}" text-anchor="end" font-family="Archivo,Arial">${vol(vmax)} / ô ${px(w)}</text>`);
+    return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Khối lượng theo mức giá">${out.join("")}</svg>`;
+  }
+
+  function zoneTable(id, title, zones, kind) {
+    const list = (zones || []).slice().sort((a, b) => Math.abs(a.dist || 0) - Math.abs(b.dist || 0));
+    if (!list.length) { $(id).innerHTML = `<h4>${title} <span class="n">— không có ô nào vượt ngưỡng</span></h4>`; return; }
+    const rows = list.map((z) => {
+      const d = z.dist == null ? "—" : `${z.dist > 0 ? "+" : ""}${z.dist.toFixed(1)} %`;
+      const est = z.est_share >= 0.5 ? `<span class="est">ước lượng ${Math.round(z.est_share * 100)} %</span>` : "";
+      return `<tr><td>${px(z.lo)} – ${px(z.hi)}${est}<span class="z">${z.sessions} phiên · gần nhất ${dmy(z.last)}</span></td><td>${vol(z.vol)}</td><td class="share ${kind}"><b>${pct(z.share)}</b></td><td>${d}</td></tr>`;
+    }).join("");
+    $(id).innerHTML = `<h4>${title} <span class="n">— ${list.length} vùng, gần giá nhất trước</span></h4>
+      <table><thead><tr><th>Vùng giá</th><th>KL</th><th>% mua</th><th>Cách giá</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  async function renderZone() {
+    if (!Z) await loadZone();
+    const s = zsym();
+    if (!s) return;
+    const p = s.profiles[zwin] || s.profiles["40"];
+    $("zoneKicker").textContent = `phiên ${dmy(Z.trade_date)}`;
+    $("z-px").textContent = px(s.price);
+    document.querySelectorAll("#z-win button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.win === zwin ? "true" : "false"));
+    $("z-big").className = "tg " + (zbig ? "on" : "off");
+    $("z-big-note").textContent = `Lệnh ≥ ${Math.round((Z.settings.big_lot_value_vnd || 5e8) / 1e6)} triệu đ · chỉ có ở ${s.real_sessions} phiên tick thật`;
+    if (!p) { $("z-prof").innerHTML = `<div class="empty">Chưa có dữ liệu cho mã này.</div>`; return; }
+    const estN = p.n - p.n_real;
+    const fac = p.factors ? ` · ${p.factors} phiên đã quy về thang giá điều chỉnh` : "";
+    $("z-strip").className = "strip" + (p.n_real < p.n / 2 ? " pending" : "");
+    $("z-strip").innerHTML = `<b>${p.n_real}/${p.n} phiên là tick thật</b> (${dmy(p.from)} → ${dmy(p.to)})${estN ? `; ${estN} phiên còn lại dựng từ nến 1 phút — KL theo giá đúng, <b>mua/bán chỉ ước lượng</b> theo hướng nến, tô nhạt` : ""}${fac}. Mua ${pct(p.buy / (p.buy + p.sell || 1))} · ATO/ATC ${pct(p.x / (p.total || 1))} · tổng KL ${vol(p.total)}.`;
+    $("z-prof").innerHTML = profileChart(p, s.price, 358, zbig);
+    if (zbig) {
+      zoneTable("z-buy", "Cá mập mua nhiều", p.big_buy_zones, "up");
+      zoneTable("z-sell", "Cá mập bán nhiều", p.big_sell_zones, "down");
+    } else {
+      zoneTable("z-buy", "Vùng mua nhiều", p.buy_zones, "up");
+      zoneTable("z-sell", "Vùng bán nhiều", p.sell_zones, "down");
+    }
+    const st = Z.settings;
+    $("z-why").innerHTML = `<h4>Cách đọc</h4>
+      <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — giá hay quay về đây. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động.</p>
+      <p><b>Vùng mua nhiều</b> = các ô liền nhau có KL ≥ ${st.zone_vol_mult}× trung bình ô và ≥ ${Math.round(st.buy_share_min * 100)} % mua chủ động; <b>vùng bán nhiều</b> ≤ ${Math.round(st.sell_share_max * 100)} % mua. Vùng mua dưới giá hiện tại thường là chỗ có người đỡ; vùng bán trên giá là chỗ hàng chờ ra.</p>
+      <p class="warn">Tick thật chỉ gom được mỗi ngày một phiên từ 18/09/2026; phần ước lượng từ nến 1' được thay dần. Chưa đo được vùng có giá trị dự báo hay không — đây là thống kê mô tả, không phải khuyến nghị.</p>`;
+  }
+  $("z-sym").addEventListener("change", () => { zcur = $("z-sym").value; renderZone(); });
+  $("z-win").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-win]"); if (!b) return; zwin = b.dataset.win; try { localStorage.setItem("pp_zwin", zwin); } catch (_) {} renderZone(); });
+  $("z-big").addEventListener("click", () => { zbig = !zbig; renderZone(); });
+
   // ---------------------------------------------------------------- Sổ chấm
   function renderHistory() {
     const v = D.verdict || {}, hist = (D.history || []).slice();
@@ -359,11 +475,12 @@
     document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === "p-" + name));
     $("main").scrollTop = 0;
     if (name === "chart") renderChart();
+    if (name === "zone") renderZone();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = /^#(today|history|chart|settings)$/.exec(location.hash); if (m) switchTab(m[1]); }
+  function applyHash() { const m = /^#(today|history|chart|zone|settings)$/.exec(location.hash); if (m) switchTab(m[1]); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } } });
 })();

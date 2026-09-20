@@ -74,6 +74,35 @@ bọc iframe 420 px (Chrome không cho cửa sổ < 500 px).
   `python -m scripts.fetch_history --refresh --days 8000`.
 - Danh mục: `job/watchlist.py` đọc API KingStock, bản chụp `docs/data/watchlist.json` khi Fly ngủ.
 
+## Vùng giá — mô-đun `zone/` (độc lập, thêm 20/09/2026)
+
+Chỉ báo riêng: gộp **từng lệnh khớp trong phiên** (giá · KL · Mua/Bán chủ động) theo mức giá, tích luỹ 10/20/40 phiên,
+chỉ ra **POC**, **Value Area 70 %**, **vùng mua nhiều / bán nhiều** và lớp **lệnh lớn ≥ 500 tr đ** ("cá mập"). Tab
+*Vùng giá* trong PWA; chạy tách biệt với job nón: `zone/run_daily.py`, workflow `zone.yml` (15:50 VN + dự phòng 16:25,
+18:30 và **08:15 sáng hôm sau**), dữ liệu `data/zone/<MÃ>.json` + `docs/data/zone/`. Kế hoạch gốc:
+`C:\Users\IT\.claude\plans\t-i-c-n-x-y-d-ng-toasty-rabbit.md`.
+
+```
+venv\Scripts\python -m zone.collect FPT            # in profile 1 phiên để đối chiếu app CTCK
+venv\Scripts\python -m zone.backfill               # dựng tạm 47 phiên ước lượng từ nến 1' (đã chạy 20/09)
+venv\Scripts\python -m zone.run_daily --dry-run    # ~1 phút cho 39 mã
+venv\Scripts\python -m scripts.zone_check_sources FPT   # đối chiếu Mua/Bán với Vietcap (một lần)
+```
+
+- **Nguồn tick: VNDirect** `api-finfo.vndirect.com.vn/v4/stock_intraday_latest` (`common/vndirect.py`) — miễn phí,
+  ~12 k tick/phiên/mã, 3 trang × 5.000. Chỉ giữ **phiên gần nhất** → mỗi ngày gom một phiên, cron sáng hôm sau vớt phiên
+  hụt. Phải `sort=accumulatedVol:asc`: không có sort thì trang chồng/thiếu tuỳ lần gọi (FPT: 12.669 dòng mà chỉ 9.486
+  tick khác nhau). Đủ phiên ⇔ Σ KL == accumulatedVol cuối, thiếu thì không ghi.
+- **`side` của VNDirect đặt tên theo bên BỊ ĐỘNG**: `PB` = bán chủ động, `PS` = mua chủ động. Đối chiếu 1.497 lệnh
+  FPT/HPG/VNM với Vietcap (khớp từng lệnh với app CTCK): đọc ngược đúng 100 %, đọc xuôi 0 %. Một lệnh chủ động bị tách
+  thành nhiều tick → `collect.orders` gộp tick cùng giây/giá/hướng trước khi xét lệnh lớn.
+- **Giá thô vs điều chỉnh**: tick là giá thô, kho nến DNSE là giá điều chỉnh (FPT 18/09: 71,7 vs 65,18). Hệ số
+  `close_history / close_phiên` nhân vào mọi mức giá LÚC DỰNG profile (`zone/profile.py`), nên sự kiện sau khi lưu vẫn đúng.
+- ATO/ATC không có hướng → nhóm `x`: tính vào tổng/POC, không vào tỷ lệ mua/bán (18/09 ETF cơ cấu, ATC FPT = 55 % KL).
+- Lịch sử trước 18/09 là **ước lượng** từ nến 1' DNSE (`zone/backfill.py`: KL chia đều [l,h], hướng theo c−o) — giao diện
+  tô nhạt, ghi `n_thật/n`. Phiên thật không bao giờ bị ghi đè.
+- Chưa có push, chưa đo giá trị dự báo của vùng — thống kê mô tả. Ngưỡng ở `docs/data/zone/settings.json`.
+
 ## Bẫy đã gặp, đừng dẫm lại (thừa kế từ candle-radar / KingStock)
 
 1. DNSE trả nến hôm nay dừng giữa phiên (~13:45) với HTTP 200 → chỉ tin nến hôm nay khi chuỗi nến 1' đã có
@@ -116,3 +145,5 @@ bọc iframe 420 px (Chrome không cho cửa sổ < 500 px).
 - [x] **G4** (20/09/2026): PWA `docs/` 4 tab (Hôm nay · Biểu đồ · Sổ chấm · Cài đặt), nón SVG + 2 kịch bản, đăng ký push
   kiểu candle-radar (dán Secret). Chụp headless 420 px OK. Chờ: repo GitHub + Pages + VAPID vào `docs/config.js`.
 - [ ] G5: chạy thật 1 tuần, so coverage.
+- [x] **Zone** (20/09/2026): `common/vndirect.py`, `zone/{collect,store,backfill,profile,run_daily}.py`, `zone.yml`,
+  tab Vùng giá (`?v=2`), 14 test; 39 mã đã có 47 phiên ước lượng + phiên thật 18/09. Chờ: workflow chạy 15:50 T2 22/09.
