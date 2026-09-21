@@ -112,6 +112,9 @@ venv\Scripts\python -m scripts.zone_check_sources FPT   # đối chiếu Mua/Bá
 4. Python trên Windows không hiểu đường dẫn `/c/...` của Git Bash — dùng `C:\...`.
 5. 39 mã là danh mục chọn *hôm nay* → mọi thống kê lịch sử có survivorship bias; tần suất tăng lịch sử
    của nhóm này cao hơn thị trường, nên mốc "luôn tăng" khó thắng — đó là chủ đích.
+6. **`job/watchlist.load()` ghi lại `docs/data/watchlist.json`** mỗi lần gọi. Workflow phụ nào tái dùng nó mà chỉ
+   `git add` thư mục riêng thì working tree bẩn → `git pull --rebase` từ chối → bước commit đỏ dù job đã chạy xong
+   (`zone` đỏ 3/3 lần 21/09/2026, suýt mất phiên vì nguồn tick chỉ giữ một ngày). Dọn file đó trước khi `pull`.
 
 ## Kết quả đo (tái lập bằng script trong `scripts/`)
 

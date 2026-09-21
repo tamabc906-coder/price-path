@@ -53,5 +53,9 @@ jobs:
           git add data/zone/ docs/data/zone/
           if git diff --cached --quiet; then echo "không có gì mới"; exit 0; fi
           git commit -m "zone: $(date -u +%Y-%m-%d) [skip ci]"
+          # job/watchlist.load() ghi lại docs/data/watchlist.json (bản chụp danh mục) — file dirty làm
+          # `git pull --rebase` từ chối (đỏ 3/3 lần 21/09/2026). Bỏ nó đi: daily.yml đã commit file đó mỗi ngày.
+          git checkout -- docs/data/watchlist.json
+          git status --short
           git pull --rebase
           git push
