@@ -132,3 +132,14 @@ def test_event_payload_fields():
     p = push.event_payload(it, ev, "2026-09-24")
     assert p["tag"] == "pp-ev-AAA" and p["hot"] and "24/09" in p["title"] and "Gap giảm" in p["title"]
     assert "+4,2 %" in p["body"] and "5/7" in p["body"] and "47 %" in p["body"] and "11.0 – 14.2" in p["body"]
+
+
+def test_event_log_lists_recent_events():
+    st, days = _store()
+    _plant_gap_fill(st, "AAA", days)
+    cfg = dict(settings.DEFAULTS, events_enabled=["gap_fill_demand"])
+    _, _, info = forecast.forecast_all(st, [{"symbol": "AAA", "company_name": "A"}], days[-1], cfg,
+                                       conformal.new_state(forecast.HS), n_sim=50)
+    log = info["event_log"]
+    assert log and log[0]["symbol"] == "AAA" and log[0]["age"] == 0 and log[0]["ret10"] is None
+    assert log[0]["date"] == days[-1].isoformat() and log[0]["ret_now"] == 0

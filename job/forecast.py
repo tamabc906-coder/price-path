@@ -110,6 +110,29 @@ def symbol_events(g: pd.DataFrame, sym: str, td: str, codes: list[str], pools: d
     return out
 
 
+EVENT_LOG_SESSIONS = 250   # nhật ký sự kiện ~1 năm cho tab Sổ chấm
+
+
+def event_log(g: pd.DataFrame, td: str, codes: list[str], names: dict, n: int = EVENT_LOG_SESSIONS) -> list[dict]:
+    """Các sự kiện đang bật trong n phiên gần nhất của mỗi mã + giá thật đã đi sau đó (≤ td), mới → cũ.
+    ret10 = lãi đóng cửa sau 10 phiên (None nếu chưa đủ); ret_now = tới hôm nay. Chưa trừ phí."""
+    if g.empty or not codes:
+        return []
+    out = []
+    for sym, gs in g[g["d"] <= pd.Timestamp(td)].groupby("symbol", sort=False):
+        gs = gs.tail(n).reset_index(drop=True)
+        c = gs["c"].to_numpy()
+        for k in codes:
+            for i in np.flatnonzero(gs[k].to_numpy()):
+                after = len(gs) - 1 - i
+                out.append({"symbol": sym, "name": names.get(sym, ""), "code": k, "event": events.NAMES[k],
+                            "date": gs["d"].iloc[i].date().isoformat(), "price0": round(float(c[i]), 2), "age": int(after),
+                            "ret10": round(float(c[i + 10] / c[i] - 1), 4) if after >= 10 else None,
+                            "ret_now": round(float(c[-1] / c[i] - 1), 4)})
+    out.sort(key=lambda e: (e["date"], e["symbol"]), reverse=True)
+    return out
+
+
 def calendar(store: dict) -> list[str]:
     """Lịch phiên = hợp các ngày có nến trong kho (ISO, tăng dần)."""
     days: set[str] = set()
@@ -203,6 +226,7 @@ def forecast_from(f, keys, pools: dict, items: list[dict], trade_date: date, cfg
         out.append(item)
     info = {"rows": int(len(f)), "pool_global": int(len(glob)), "cells_full": sum(1 for k in pools if len(k) == len(regime.AXES)),
             "gate_enabled": bool(gate.get("enabled")), "p_src": "lgbm" if boosters else "regime_freq",
+            "event_log": event_log(ev["frame"], td, ev_codes, names) if ev_codes else [],
             "events_meta": {"alert_mode": mode, "enabled": ev_codes, "push": [k for k in ev_codes if k in ev_push],
                             "active_days": EVENT_ACTIVE, "generated": ev_stats.get("generated"),
                             "pools": {k: int(len(p)) for k, p in (ev or {}).get("pools", {}).items()},

@@ -198,3 +198,20 @@ nav button[aria-selected="true"] { background: var(--brand); color: #fff; font-w
 .toast.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
 .toast b { display: block; font-size: 13px; }
 .toast span { font-size: 12px; color: #E6DFF3; }
+
+/* Sự kiện có lợi thế (E3, 23/09/2026) */
+.evhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 14px 18px 0; }
+.evhead h2 { margin: 0; font-size: 15px; font-weight: 900; color: var(--brand); }
+.evhead span { font-size: 11px; color: var(--mute); }
+.evcards { padding-top: 8px; }
+.card.ev { border-color: var(--brand-gold); background: #FFFCF3; }
+.chip.ev { background: #F6ECD2; border-color: var(--brand-gold); color: #5E4712; font-weight: 700; }
+.box.evnone { margin-top: 8px; }
+.box.evnone p.m { font-size: 11.5px; color: var(--mute); }
+.box.evnone a { text-decoration: underline; }
+.legend i.ev { background: #3B2A6B; }
+.tbl td.l { text-align: left; }
+.evsum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 4px 6px 8px; }
+.evsum > div { display: flex; flex-direction: column; }
+.evsum .k { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: .03em; }
+.evsum .v { font-size: 15px; font-weight: 700; }

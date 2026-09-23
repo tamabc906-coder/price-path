@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 from datetime import datetime
 
@@ -99,6 +100,28 @@ def _history(days: int, scores: list[dict]) -> list[dict]:
         out.append({"date": date, "n_alerts": len(d.get("alerts") or []), "alerts": d.get("alerts") or [],
                     "cov80": cov.get(date, {}), "late": bool(d.get("late"))})
     return out
+
+
+def _score_event_log(log_rows: list[dict]) -> list[dict]:
+    """Gắn kết quả chấm nón cho sự kiện đã đủ 10 phiên VÀ đã được app phát thật hôm xảy ra (daily/<ngày>.json có
+    q_log10 của sự kiện đó, từ 24/09/2026). Sự kiện trước ngày chạy thật chỉ có lãi thật, không có nón để chấm."""
+    cache: dict[str, dict] = {}
+    for e in log_rows:
+        e["live"] = False
+        f = DAILY / f"{e['date']}.json"
+        if e["date"] not in cache:
+            cache[e["date"]] = _load(f, {}).get("forecasts") or {}
+        rec = next((x for x in (cache[e["date"]].get(e["symbol"]) or {}).get("events") or []
+                    if x.get("code") == e["code"] and x.get("age") == 0 and x.get("q_log10")), None)
+        if not rec:
+            continue
+        e["live"] = True
+        q = rec["q_log10"]
+        e["q80"] = [round(e["price0"] * math.exp(q["10"]), 2), round(e["price0"] * math.exp(q["90"]), 2)]
+        if e["ret10"] is not None:
+            r = math.log(1 + e["ret10"])
+            e["in80"] = bool(q["10"] <= r <= q["90"])
+    return log_rows
 
 
 def _send_alerts(alerts: list[dict], trade_iso: str, subs: list[dict], digest_threshold: int,
@@ -218,7 +241,7 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
                            "per_h": {h: {k: v for k, v in d.items() if k != "rows"} for h, d in (gate.get("per_h") or {}).items()},
                            "rows": {h: d.get("rows", []) for h, d in (gate.get("per_h") or {}).items()},
                            "trained_at": gate.get("trained_at")}},
-        "events_meta": em, "verdict": ver, "stale": stale,
+        "events_meta": em, "event_log": _score_event_log(info.get("event_log") or []), "verdict": ver, "stale": stale,
         "items": [{k: v for k, v in it.items() if k != "q_log"} for it in fc],
         "alerts": [it["symbol"] for it in alerts], "push": push_res,
     }

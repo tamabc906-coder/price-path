@@ -36,6 +36,7 @@
 
   // ---------------------------------------------------------------- nón SVG
   // bars: [[d,o,h,l,c,v], …] n phiên cuối; q: {"5":{"5":giá,…},…}; scen: [{name,weight,path[20]}]
+  // opts.volume: dải KL · opts.fill: màu nón · opts.path: giá đóng cửa THẬT các phiên sau mốc (nón sự kiện neo ở quá khứ)
   function coneChart(bars, q, scen, price0, W, H, opts) {
     opts = opts || {};
     const withVol = !!opts.volume, n = bars.length;
@@ -52,6 +53,9 @@
     let lo = Math.min(...bars.map((b) => b[LO]), q["20"]["5"]);
     let hi = Math.max(...bars.map((b) => b[HI]), q["20"]["95"]);
     if (scen && showScen) scen.forEach((s) => s.path.forEach((p) => { lo = Math.min(lo, p); hi = Math.max(hi, p); }));
+    const real = opts.path || [];
+    real.forEach((p) => { lo = Math.min(lo, p); hi = Math.max(hi, p); });
+    const FILL = opts.fill || INK;
     const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
     const top = 6, bot = H - (withVol ? 46 : 16);
     const y = (p) => bot - (p - lo) / (hi - lo) * (bot - top);
@@ -70,7 +74,7 @@
     for (const [lq, hq, op] of bands) {
       const up = [], dn = [];
       for (let t = 0; t <= HORIZON; t++) { up.push(`${f1(xt(t))},${f1(y(at(hq, t)))}`); dn.unshift(`${f1(xt(t))},${f1(y(at(lq, t)))}`); }
-      out.push(`<polygon points="${up.concat(dn).join(" ")}" fill="${INK}" fill-opacity="${op}"/>`);
+      out.push(`<polygon points="${up.concat(dn).join(" ")}" fill="${FILL}" fill-opacity="${op}"/>`);
     }
     if (scen && showScen) {
       scen.forEach((s, i) => {
@@ -83,7 +87,14 @@
       });
     }
     const med = []; for (let t = 0; t <= HORIZON; t++) med.push(`${f1(xt(t))},${f1(y(at("50", t)))}`);
-    out.push(`<polyline points="${med.join(" ")}" fill="none" stroke="${INK}" stroke-width="1.2" stroke-dasharray="3 2"/>`);
+    out.push(`<polyline points="${med.join(" ")}" fill="none" stroke="${FILL}" stroke-width="1.2" stroke-dasharray="3 2"/>`);
+    if (real.length) {
+      const pts = [`${f1(xt(0))},${f1(y(price0))}`].concat(real.map((p, k) => `${f1(xt(k + 1))},${f1(y(p))}`));
+      out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${GOLDC}" stroke-width="2.2" stroke-linejoin="round"/>`);
+      const lx = xt(real.length), ly = y(real[real.length - 1]);
+      out.push(`<circle cx="${f1(lx)}" cy="${f1(ly)}" r="3" fill="${GOLDC}"/>`);
+      out.push(`<text x="${f1(lx + 5)}" y="${f1(ly + 3)}" font-size="8.5" font-weight="700" fill="${GOLD2}" font-family="Archivo,Arial">nay ${px(real[real.length - 1])}</text>`);
+    }
     const bw = Math.max(2, cw * 0.6);
     bars.forEach((b, i) => {
       const col = b[C] >= b[O] ? UP : DOWN, x = xc(i), yo = y(b[O]), yc = y(b[C]);
@@ -105,7 +116,7 @@
     }
     out.push(`<line x1="${f1(xLast)}" y1="${top}" x2="${f1(xLast)}" y2="${bot}" stroke="${GOLDC}" stroke-width="1" stroke-dasharray="2 2"/>`);
     [[5, "+5"], [10, "+10"], [20, "+20"]].forEach(([t, lab]) => out.push(`<text x="${f1(xt(t))}" y="${H - 4}" font-size="8" fill="${MUTE}" text-anchor="middle" font-family="Archivo,Arial">${lab}</text>`));
-    out.push(`<text x="${f1(xLast)}" y="${H - 4}" font-size="8" fill="${GOLDC}" text-anchor="middle" font-family="Archivo,Arial">nay</text>`);
+    out.push(`<text x="${f1(xLast)}" y="${H - 4}" font-size="8" fill="${GOLDC}" text-anchor="middle" font-family="Archivo,Arial">${esc(opts.anchor || "nay")}</text>`);
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nón xác suất">${out.join("")}</svg>`;
   }
 
@@ -128,6 +139,56 @@
   const okItems = () => (D.items || []).filter((it) => it.ok);
   const barsOf = (sym, n) => ((B && B.bars && B.bars[sym]) || []).slice(-n);
 
+  // ---------------------------------------------------------------- Sự kiện (model/events.py, job E2)
+  // Thứ duy nhất đo ra có HƯỚNG: nón lịch sử sau sự kiện, neo tại giá đóng cửa ngày sự kiện, đường vàng = giá thật đã đi.
+  const EV_FILL = "#3B2A6B";
+  const spc = (v, d) => (v == null ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d == null ? 1 : d).replace(".", ",")} %`);
+  const evMeta = () => (D && D.events_meta) || { enabled: [], push: [], stats: {}, alert_mode: "p10" };
+  const evMode = () => evMeta().alert_mode === "events";
+  const evAll = () => okItems().flatMap((it) => (it.events || []).map((e) => ({ it, e }))).sort((a, b) => a.e.age - b.e.age || a.it.symbol.localeCompare(b.it.symbol));
+  const ageTxt = (a) => (a === 0 ? "hôm nay" : `${a} phiên trước`);
+  function barsUpTo(sym, iso, n) { const all = (B && B.bars && B.bars[sym]) || []; return all.filter((b) => b[0] <= iso).slice(-n); }
+  function evChart(it, e, W, H, volume) {
+    if (!e.q) return `<div class="empty">Chưa đủ lần lịch sử (${e.n_pool}) để vẽ nón cho sự kiện này.</div>`;
+    const bs = barsUpTo(it.symbol, e.date, volume ? 30 : 22);
+    if (!bs.length) return "";
+    return coneChart(bs, e.q, null, e.price0, W, H, { path: e.path.slice(1), fill: EV_FILL, anchor: dmy(e.date), volume: !!volume });
+  }
+  function evStatsHtml(e) {
+    const st = e.stats || {}, q = e.q && e.q["10"];
+    return `<div class="g3">
+      <div><span class="k">Lịch sử · 10p</span><span class="v">${spc(st.ex10)}</span><span class="m">vượt mốc · đúng ${st.years_win}/${st.years} năm</span></div>
+      <div><span class="k">Chạm +5 % trước −5 %</span><span class="v">${e.p_touch == null ? "—" : pct(e.p_touch)}</span><span class="m">trong 10 phiên</span></div>
+      <div><span class="k">Nón 80 % · +10p</span><span class="v sm">${q ? `${p1(q["10"])} – ${p1(q["90"])}` : "—"}</span><span class="m">tâm ${q ? p1(q["50"]) : "—"}</span></div>
+    </div>`;
+  }
+  function evCard(it, e) {
+    const pushed = (it.alert_events || []).includes(e.code) && e.age === 0;
+    const move = e.path.length > 1 ? e.path[e.path.length - 1] / e.price0 - 1 : null;
+    return `<article class="card ev${pushed ? " alert" : ""}">
+      <div class="top"><div class="l"><h3><button type="button" data-chart="${esc(it.symbol)}">${esc(it.symbol)}</button></h3><span class="name">${esc(it.name)}</span></div>
+        <div class="r"><span class="px">${px(it.price)}</span>${chgHtml(it.change_pct)}</div></div>
+      <div class="chips"><span class="chip ev">${esc(e.name)}</span><span class="chip">${dmy(e.date)} · ${ageTxt(e.age)}</span>${pushed ? `<span class="chip alert">🔔 đã báo</span>` : ""}${move != null ? `<span class="chip ${move >= 0 ? "g" : "r"}">từ sự kiện ${spc(move)}</span>` : ""}</div>
+      <div class="cone">${evChart(it, e, 326, 130)}</div>
+      ${evStatsHtml(e)}
+      <div class="trust"><span>nón từ ${(e.n_pool || 0).toLocaleString("vi-VN")} lần sự kiện này trong lịch sử 39 mã · neo giá ${px(e.price0)} ngày ${dmy(e.date)}</span></div>
+      <div class="disc">Lãi lịch sử là vượt mua-đại, sau phí; nón là thống kê quá khứ, không phải khuyến nghị.</div>
+    </article>`;
+  }
+  function renderEvents() {
+    const el = $("evBlock"), m = evMeta();
+    if (!m.enabled || !m.enabled.length) { el.innerHTML = ""; return; }
+    const list = evAll(), names = m.enabled.map((k) => (m.stats[k] && m.stats[k].name) || k);
+    const lastEv = (D.event_log || [])[0];
+    const head = `<div class="evhead"><h2>Sự kiện có lợi thế${list.length ? ` · ${list.length}` : ""}</h2><span>hiện ${m.active_days || 10} phiên sau khi xảy ra</span></div>`;
+    if (!list.length) {
+      el.innerHTML = `${head}<div class="box evnone"><p><b>Hôm nay không mã nào có lợi thế hướng.</b> App chỉ nói hướng khi có sự kiện đã đo đạt cổng: ${esc(names.join(" · "))}. Các nón bên dưới chỉ là thước biên độ — P(tăng) ≈ mốc chung.</p>
+        ${lastEv ? `<p class="m">Lần gần nhất: <b>${esc(lastEv.symbol)}</b> · ${esc(lastEv.event)} · ${dmy(lastEv.date)}${lastEv.ret10 != null ? ` → sau 10 phiên ${spc(lastEv.ret10)}` : ""} · <a href="#history">xem nhật ký</a></p>` : ""}</div>`;
+      return;
+    }
+    el.innerHTML = head + `<div class="cards evcards">${list.map(({ it, e }) => evCard(it, e)).join("")}</div>`;
+  }
+
   // ---------------------------------------------------------------- Hôm nay
   function width80(it) { const q = it.q["10"]; return (q["90"] - q["10"]) / it.price; }
   function sorted(items) {
@@ -141,7 +202,8 @@
     const v = D.verdict || {}, items = okItems();
     $("todayKicker").textContent = `phiên ${dmy(D.trade_date)} · ${D.watchlist ? D.watchlist.n : items.length} mã`;
     const covTxt = v.cov != null ? `nón 80 % bao <b>${pct(v.cov)}</b> mã (60 phiên)` : "chưa đủ phiên để chấm";
-    const psrc = D.model && D.model.p_src === "lgbm" ? "P(tăng): máy học (cổng bật)" : "P(tăng): tần suất lịch sử của ô chế độ — máy học đang tắt";
+    const psrc = D.model && D.model.p_src === "lgbm" ? "P(tăng): máy học (cổng bật)"
+      : evMode() ? "Nón = thước biên độ; P(tăng) ≈ mốc chung (đo 2021–2026). Hướng chỉ có ở khối Sự kiện" : "P(tăng): tần suất lịch sử của ô chế độ — máy học đang tắt";
     $("strip").className = "strip " + (v.status || "pending");
     $("strip").innerHTML = `<b>${esc(v.text || "Chưa chấm")}</b> · ${covTxt} · <a href="#history">xem sổ chấm</a><br>${psrc}.`
       + (D.source && D.source.late ? " <b>Nguồn chốt muộn hôm nay.</b>" : "");
@@ -152,7 +214,7 @@
       return `<article class="card${it.alert ? " alert" : ""}">
         <div class="top"><div class="l"><h3><button type="button" data-chart="${esc(it.symbol)}">${esc(it.symbol)}</button></h3><span class="name">${esc(it.name)}</span></div>
           <div class="r"><span class="px">${px(it.price)}</span>${chgHtml(it.change_pct)}</div></div>
-        <div class="chips">${it.alert ? `<span class="chip alert">▲ qua ngưỡng</span>` : ""}${chips(it)}</div>
+        <div class="chips">${it.alert ? `<span class="chip alert">${evMode() ? "🔔 sự kiện" : "▲ qua ngưỡng"}</span>` : ""}${(it.events || []).map((e) => `<span class="chip ev">${esc(e.name)} · ${ageTxt(e.age)}</span>`).join("")}${chips(it)}</div>
         <div class="cone">${coneChart(barsOf(it.symbol, 28), it.q, it.scenarios, it.price, 326, 120)}</div>
         <div class="g3">
           <div><span class="k">P(tăng) 5p</span><span class="v">${pct(it.p5)}</span><span class="m">mốc chung ${pct(it.base5)}</span></div>
@@ -166,7 +228,10 @@
     const offs = (D.items || []).filter((it) => !it.ok).map((it) => `<article class="card off"><div class="top"><div class="l"><h3>${esc(it.symbol)}</h3><span class="name">${esc(it.name)}</span></div><div class="r"><span class="px">${px(it.price)}</span></div></div><div class="reason">${esc(it.reason || "")}</div></article>`);
     const stale = (D.stale || []).map((s) => `<article class="card off"><div class="top"><div class="l"><h3>${esc(s.symbol)}</h3></div></div><div class="reason">Chưa khớp — nến cuối ${dmy(s.last_date)}. Không dự báo.</div></article>`);
     $("todayBody").innerHTML = cards.concat(offs, stale).join("") || `<div class="empty"><b>Chưa có dự báo</b>Job chưa chạy hoặc nguồn chưa chốt.</div>`;
-    $("todayFoot").innerHTML = `${alerts.length} mã qua ngưỡng (P(tăng 10p) ≥ ${pct(D.settings.p_min)}, n ≥ ${D.settings.n_min}) · dữ liệu ${esc(D.generated_at ? D.generated_at.slice(11, 16) : "")} · nến ${D.source ? D.source.n_priced : "—"}/${D.watchlist ? D.watchlist.n : "—"} mã.`;
+    const m = evMeta(), pushNames = (m.push || []).map((k) => (m.stats[k] && m.stats[k].name) || k);
+    renderEvents();
+    $("todayFoot").innerHTML = (evMode() ? `${alerts.length} mã có sự kiện mới được báo (push: ${esc(pushNames.join(", ") || "không")})`
+      : `${alerts.length} mã qua ngưỡng (P(tăng 10p) ≥ ${pct(D.settings.p_min)}, n ≥ ${D.settings.n_min})`) + ` · dữ liệu ${esc(D.generated_at ? D.generated_at.slice(11, 16) : "")} · nến ${D.source ? D.source.n_priced : "—"}/${D.watchlist ? D.watchlist.n : "—"} mã.`;
   }
   $("sort").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-sort]"); if (!b) return;
@@ -178,7 +243,10 @@
   function fillSymbols() {
     const sel = $("c-sym"), items = okItems();
     sel.innerHTML = items.map((it) => `<option value="${esc(it.symbol)}">${esc(it.symbol)} — ${esc(it.name)}</option>`).join("");
-    if (!cur || !items.some((it) => it.symbol === cur)) cur = items.length ? sorted(items)[0].symbol : null;
+    if (!cur || !items.some((it) => it.symbol === cur)) {
+      const ev = evAll()[0];                                   // có sự kiện thì mở mã đó trước
+      cur = ev ? ev.it.symbol : items.length ? sorted(items)[0].symbol : null;
+    }
     if (cur) sel.value = cur;
   }
   function renderChart() {
@@ -193,6 +261,13 @@
     $("c-chips").innerHTML = chips(it);
     $("c-cone").innerHTML = coneChart(barsOf(it.symbol, 36), it.q, it.scenarios, it.price, 358, 290, { volume: true });
     $("c-scen").className = "tg " + (showScen ? "on" : "off");
+    const evs = it.events || [];
+    $("c-ev").hidden = !evs.length;
+    $("c-ev").innerHTML = evs.map((e) => `<h4>Nón sau sự kiện · ${esc(e.name)} · ${dmy(e.date)} (${ageTxt(e.age)})</h4>
+      <div class="cone big">${evChart(it, e, 358, 250, true)}</div>
+      <div class="legend"><span><i class="o35 ev"></i>50 %</span><span><i class="o2 ev"></i>80 %</span><span><i class="o1 ev"></i>90 %</span><span><i class="sa"></i>giá thật từ ngày sự kiện</span></div>
+      ${evStatsHtml(e)}
+      <p>Nón dựng từ ${(e.n_pool || 0).toLocaleString("vi-VN")} lần "${esc(e.name)}" trong lịch sử 39 mã: đường đi 20 phiên sau mỗi lần, chuẩn hoá theo biến động rồi nhân lại biến động của ${esc(it.symbol)} ngày ${dmy(e.date)}, nới thêm cho đủ độ bao đã đo. Khác nón chế độ ở trên: nón này <b>nghiêng</b> vì sự kiện đã đo có lợi thế (${spc(e.stats && e.stats.ex10)}/10p vượt mua-đại, đúng ${e.stats && e.stats.years_win}/${e.stats && e.stats.years} năm).</p>`).join("");
     const row = (h) => { const q = it.q[h]; return `<tr><td>+${h} phiên</td><td>${p1(q["5"])}</td><td>${p1(q["25"])}</td><td>${p1(q["50"])}</td><td>${p1(q["75"])}</td><td>${p1(q["95"])}</td></tr>`; };
     $("c-table").innerHTML = `<h4>Phân vị giá (nghìn đồng) — cột X % = bao nhiêu % kịch bản nằm DƯỚI giá này</h4>
       <table><thead><tr><th>Mốc</th><th>5 %</th><th>25 %</th><th>50 %</th><th>75 %</th><th>95 %</th></tr></thead><tbody>${HS.map(row).join("")}</tbody></table>
@@ -328,7 +403,24 @@
   $("z-big").addEventListener("click", () => { zbig = !zbig; renderZone(); });
 
   // ---------------------------------------------------------------- Sổ chấm
+  function renderEventLog() {
+    const log = D.event_log || [], el = $("histEv");
+    if (!evMeta().enabled || !evMeta().enabled.length) { el.hidden = true; return; }
+    el.hidden = false;
+    const done = log.filter((e) => e.ret10 != null), live = done.filter((e) => e.live && e.in80 != null);
+    const avg = done.length ? done.reduce((a, e) => a + e.ret10, 0) / done.length : null;
+    const up = done.filter((e) => e.ret10 > 0).length;
+    const res = (e) => (e.ret10 != null ? `<b style="color:${e.ret10 >= 0 ? UP : DOWN}">${spc(e.ret10)}</b>` : `<span style="color:${MUTE}">đang: ${spc(e.ret_now)} · ${e.age} phiên</span>`);
+    const cone = (e) => (!e.live ? `<span style="color:${MUTE}">—</span>` : e.in80 == null ? `<span style="color:${MUTE}">chờ</span>` : e.in80 ? `<span style="color:${UP};font-weight:700">✓</span>` : `<span style="color:${DOWN};font-weight:700">✗</span>`);
+    const rows = log.slice(0, 20).map((e) => `<tr><td>${dmy(e.date)}<span class="z">${e.date.slice(0, 4)}</span></td><td class="l"><b>${esc(e.symbol)}</b><span class="z">${esc(e.event)}</span></td><td>${res(e)}</td><td class="c">${cone(e)}</td></tr>`);
+    el.innerHTML = `<h4>Nhật ký sự kiện · 1 năm gần nhất <span class="n">— ${log.length} lần${log.length > 20 ? ", hiện 20 gần nhất" : ""}</span></h4>
+      <div class="evsum"><div><span class="k">Đủ 10 phiên</span><span class="v">${done.length}</span></div><div><span class="k">Lãi TB 10p</span><span class="v">${spc(avg)}</span></div><div><span class="k">Số lần tăng</span><span class="v">${done.length ? `${up}/${done.length}` : "—"}</span></div><div><span class="k">Trong nón 80 %</span><span class="v">${live.length ? `${live.filter((e) => e.in80).length}/${live.length}` : "—"}</span></div></div>
+      <table><thead><tr><th>Ngày</th><th style="text-align:left">Mã · sự kiện</th><th>+10 phiên</th><th style="text-align:center">Nón 80 %</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">Chưa có sự kiện nào trong 1 năm.</td></tr>`}</tbody></table>
+      <div class="note">Lãi = giá đóng cửa sau 10 phiên so với ngày sự kiện, chưa trừ phí, chưa so thị trường. Cột Nón chỉ chấm sự kiện app đã phát thật (từ 24/09/2026); sự kiện trước đó dựng lại từ lịch sử nên ghi "—".</div>`;
+  }
+
   function renderHistory() {
+    renderEventLog();
     const v = D.verdict || {}, hist = (D.history || []).slice();
     $("histKicker").textContent = `đến phiên ${dmy(D.trade_date)}`;
     const big = v.status === "pending" ? "…" : pct(v.cov);
@@ -370,11 +462,18 @@
   function renderSettings() {
     if (D) {
       const s = D.settings || {};
-      $("thresholds").innerHTML = `<div class="l"><span>Ngưỡng P(tăng 10p)</span><span class="pill n">≥ ${pct(s.p_min)}</span></div>
-        <div class="l"><span>Số mẫu tối thiểu trong ô</span><span class="pill n">${s.n_min} lần</span></div>
+      const em = evMeta(), en = em.enabled || [], pu = em.push || [];
+      const evRows = Object.entries(em.stats || {}).map(([k, v]) => `<tr><td>${esc(v.name)}</td><td>${spc(v.ex10)}</td><td>${v.years_win}/${v.years}</td><td>${v.scale ? Number(v.scale["80"]).toFixed(2) : "—"}</td><td class="c">${!v.pass ? `<span style="color:${MUTE}">trượt</span>` : pu.includes(k) ? `<span class="pill on">push</span>` : en.includes(k) ? `<span class="pill n">chỉ hiện</span>` : `<span class="pill off">tắt</span>`}</td></tr>`).join("");
+      $("pushHelp").innerHTML = evMode()
+        ? `Sau phiên 15:40 T2–T6, app báo khi một mã dính sự kiện đang bật push (${esc(pu.map((k) => (em.stats[k] && em.stats[k].name) || k).join(", ") || "không có")}). Sự kiện "chỉ hiện" đã có app khác báo (SC → Wyckoff Radar) nên chỉ hiện trên app. Quá ${s.digest_threshold} mã → một thông báo gộp.`
+        : `Sau phiên 15:40 T2–T6, app chỉ báo mã có P(tăng 10p) qua ngưỡng và ô chế độ đủ mẫu. Quá ${s.digest_threshold} mã → một thông báo gộp.`;
+      $("thresholds").innerHTML = `<div class="l"><span>Chế độ chuông</span><span class="pill ${evMode() ? "on" : "n"}">${evMode() ? "theo sự kiện" : "P(tăng) cũ"}</span></div>
+        <div class="tbl" style="margin:6px 0 4px;padding:6px 0 0"><table><thead><tr><th>Sự kiện</th><th>Vượt 10p</th><th>Năm</th><th>Nới 80 %</th><th style="text-align:center">Trạng thái</th></tr></thead><tbody>${evRows}</tbody></table>
+        <div class="note">Đo 2016–2026, cổng: ≥ 100 lần · ≥ 70 % số năm vượt mua-đại · bỏ 2022 vẫn dương · vượt ≥ 1 %/10p (reports/events-${esc(em.generated || "")}.md). "Nới 80 %" = hệ số giãn nón vì ngày có sự kiện biến động hơn thường.</div></div>
+        <div class="l"><span>Ngưỡng P(tăng 10p) — chỉ khi chế độ cũ</span><span class="pill ${evMode() ? "off" : "n"}">≥ ${pct(s.p_min)}</span></div>
         <div class="l"><span>Gộp khi nhiều mã</span><span class="pill n">> ${s.digest_threshold} mã</span></div>
         <div class="l"><span>Nhịp tim thứ Hai</span><span class="pill ${s.heartbeat ? "on" : "off"}">${s.heartbeat ? "bật" : "tắt"}</span></div>
-        <div class="h">Đo 2021–2026: chỉ ~15 % phiên-mã có P(tăng 10p) ≥ 0,58, ~8 % ≥ 0,60. Đổi ngưỡng: sửa <span class="mono">docs/data/settings.json</span> rồi push — job chạy lại ngay.</div>`;
+        <div class="h">Đổi sự kiện push / bật lại chế độ cũ: sửa <span class="mono">events_push</span>, <span class="mono">alert_mode</span> trong <span class="mono">docs/data/settings.json</span> rồi push — job chạy lại ngay.</div>`;
       const gate = (D.model && D.model.gate) || {}, per = (gate.per_h && gate.per_h["10"]) || {}, rows = (gate.rows && gate.rows["10"]) || [];
       const tr = rows.map((r) => `<tr><td>${r.year}</td><td>${(r.acc_lgbm * 100).toFixed(1)} / ${(r.acc_always_up * 100).toFixed(1)}</td><td>${r.brier_lgbm.toFixed(4)} / ${r.brier_freq.toFixed(4)}</td><td class="c">${r.brier_lgbm < r.brier_freq && r.acc_lgbm > r.acc_always_up ? `<span style="color:${UP};font-weight:700">✓</span>` : `<span style="color:${DOWN};font-weight:700">✗</span>`}</td></tr>`);
       $("gateBody").innerHTML = `<div class="srow"><div class="l"><span>Trạng thái</span><span class="pill ${gate.enabled ? "on" : "off"}">${gate.enabled ? "BẬT" : "TẮT"}${per.wins_brier ? ` · Brier thắng ${per.wins_brier}, đúng thắng ${per.wins_acc}` : ""}</span></div>

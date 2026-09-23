@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -38,9 +38,10 @@
         <div class="brand"><svg><use href="#logo"/></svg><div class="title">PRICE PATH</div></div>
         <span class="kicker" id="todayKicker">—</span>
       </div>
-      <div class="sub" id="todaySub">Nón xác suất 5 · 10 · 20 phiên</div>
+      <div class="sub" id="todaySub">Sự kiện có lợi thế · nón biên độ 5 · 10 · 20 phiên</div>
     </div>
     <div class="strip" id="strip">Đang tải…</div>
+    <div id="evBlock"></div>
     <div class="sort" id="sort">
       <span class="k">Sắp xếp</span>
       <button type="button" data-sort="p10" aria-pressed="true">P(tăng) 10p</button>
@@ -66,6 +67,7 @@
     <div class="cone big" id="c-cone"></div>
     <div class="legend"><span><i class="o35"></i>50 %</span><span><i class="o2"></i>80 %</span><span><i class="o1"></i>90 %</span><span><i class="med"></i>trung vị</span><span><i class="sa"></i>Kịch bản A</span><span><i class="sb"></i>Kịch bản B</span></div>
     <div class="tog"><div class="t"><b>Hai kịch bản xác suất cao nhất</b><span id="c-scen-note">2.000 đường mô phỏng gom thành 2 cụm theo hình dáng; vẽ tâm mỗi cụm kèm tỷ trọng</span></div><button type="button" class="tg on" id="c-scen" aria-label="Bật hai kịch bản"></button></div>
+    <div class="box" id="c-ev" hidden></div>
     <div class="tbl" id="c-table"></div>
     <div class="g2" id="c-stats"></div>
     <div class="box" id="c-why"></div>
@@ -74,8 +76,9 @@
   <section class="panel" id="p-history" role="tabpanel">
     <div class="head">
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Sổ chấm</div></div><span class="kicker" id="histKicker">—</span></div>
-      <div class="sub">Nón vẽ ra có đúng cỡ không? Chấm lại mỗi phiên bằng giá thật</div>
+      <div class="sub">Sự kiện đã đi đâu · nón vẽ ra có đúng cỡ không — chấm bằng giá thật</div>
     </div>
+    <div class="tbl" id="histEv" hidden></div>
     <div id="verdict"></div>
     <div class="box" id="histGrid"></div>
     <div class="tbl" id="histTable"></div>
@@ -137,6 +140,6 @@
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
