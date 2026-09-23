@@ -7,6 +7,7 @@
 - mua_lớn/bán_lớn = phần của mua/bán đến từ LỆNH có giá trị ≥ ngưỡng (mặc định 500 triệu đ) — lớp "cá mập".
   VNDirect tách một lệnh chủ động thành nhiều tick (mỗi lệnh chờ bị khớp một dòng: 14:29:42 · 73.9 · 5000 trên
   app = 7 tick 500+100+100+500+700+2000+1100), nên phải gộp tick cùng giây/giá/hướng lại thành lệnh trước khi xét.
+- gap = số cp sàn đã đếm mà nguồn không trả tick, chỉ có mặt khi khác 0 (TCB 23/09/2026 hụt 500 cp).
 - Không lưu tick thô: 12 k tick × 39 mã × 40 phiên quá nặng cho git; bản gộp mỗi phiên chỉ vài chục dòng.
 
 Chạy tay: `python -m zone.collect FPT` → in bảng mức giá của phiên gần nhất để đối chiếu app CTCK.
@@ -64,7 +65,7 @@ def aggregate(ticks: list[dict], big_value_vnd: int = BIG_LOT_VALUE_VND) -> dict
         if idx != OTHER and o["price"] * o["vol"] >= big_threshold:
             row[BIG_BUY if idx == BUY else BIG_SELL] += o["vol"]
         total += o["vol"]
-    return {
+    out = {
         "src": "vnd",
         "est": False,
         "close": ticks[-1]["price"],
@@ -72,6 +73,12 @@ def aggregate(ticks: list[dict], big_value_vnd: int = BIG_LOT_VALUE_VND) -> dict
         "ticks": len(ticks),
         "levels": {k: levels[k] for k in sorted(levels, key=float)},
     }
+    # Số cp sàn đã đếm mà nguồn không trả tick (common.vndirect.shortfall đã chặn nếu hụt quá ngưỡng).
+    # Chỉ ghi khi khác 0 — thêm "gap":0 vào mọi phiên là làm phình diff git vô ích.
+    gap = max((t.get("acc") or 0 for t in ticks), default=0) - total
+    if gap > 0:
+        out["gap"] = gap
+    return out
 
 
 def collect(client: VndirectClient, symbol: str, big_value_vnd: int = BIG_LOT_VALUE_VND) -> tuple[str, dict] | None:

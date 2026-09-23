@@ -13,6 +13,9 @@ Bốn điều đã đo 20/09/2026 (FPT phiên 18/09: 12.669 tick, 3 trang, gộp
 4. KHÔNG có `sort` thì thứ tự giữa các trang không ổn định: 3 trang trả 12.669 dòng nhưng chỉ 9.486 tick
    khác nhau, tổng KL 18,75 tr (trùng + thiếu tuỳ lần gọi). `sort=accumulatedVol:asc` là khoá duy nhất
    tăng dần theo thời gian → trang ổn định, và cho phép kiểm tra đủ phiên: Σ lastVol == accumulatedVol cuối.
+5. Nguồn thỉnh thoảng BỎ SÓT một tick lẻ, dù `sort` đã đúng và không có dòng trùng: TCB phiên 23/09/2026
+   hụt 500 cp trên 39.007.100. Vì thế cổng chặn là `shortfall()` (dung sai cực nhỏ + ghi lại số hụt),
+   không còn là "bằng đúng" — xem docstring của hàm đó.
 
 Giữ khuôn common/dnse.py: một httpx.Client cho cả vòng lặp, nghỉ 0,3 s giữa các lần gọi, lỗi → [] +
 last_error, không ném ra ngoài.
@@ -35,6 +38,10 @@ THROTTLE_SECONDS = 0.3
 PAGE_SIZE = 5000
 # Chặn vòng lặp vô tận nếu nguồn báo totalPages lạ: 20 trang × 5000 = 100 k tick, gấp ~8 lần FPT ngày bán tháo.
 MAX_PAGES = 20
+# Dung sai cho phiên nguồn bỏ sót tick lẻ — xem shortfall(). Tương đối thuần, KHÔNG có sàn tuyệt đối, để
+# `tests/test_zone.py` còn ý nghĩa và để mã mỏng không bị nhận phiên sai lệch đáng kể.
+MAX_GAP_RATIO = 0.002
+MAX_GAP_POINTS = 3
 
 last_ok: datetime | None = None
 last_error: str = ""
@@ -63,11 +70,43 @@ def parse_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
-def complete(ticks: list[dict]) -> bool:
-    """Phiên đủ tick khi Σ KL == accumulatedVol lớn nhất (KL luỹ kế do sàn đếm, không phụ thuộc phân trang)."""
+def gap_points(ticks: list[dict]) -> int:
+    """Số chỗ chuỗi acc không liền: acc của tick này khác acc tick trước cộng KL của chính nó.
+
+    Tick đầu phiên phải có acc == vol (chưa có gì luỹ kế trước đó), nên bắt đầu từ prev = 0.
+    Một tick bị bỏ sót tạo ĐÚNG một điểm hụt; phân trang hỏng làm hụt rải khắp chuỗi.
+    """
+    prev = 0
+    n = 0
+    for t in ticks:
+        if t["acc"] != prev + t["vol"]:
+            n += 1
+        prev = t["acc"]
+    return n
+
+
+def shortfall(ticks: list[dict]) -> int | None:
+    """Số cp sàn đã đếm mà nguồn không trả tick; None nghĩa là phiên KHÔNG dùng được.
+
+    0 = phiên đủ (Σ KL == accumulatedVol lớn nhất, KL luỹ kế do sàn đếm nên không phụ thuộc phân trang).
+    Nguồn thỉnh thoảng bỏ sót một tick lẻ — TCB phiên 23/09/2026 hụt 500 cp trên 39.007.100 (0,0013 %) tại
+    09:50:47, làm job đỏ 3/3 lượt và mất cả phiên của 38 mã còn lại. Bỏ cả phiên vì chừng đó là quá đắt,
+    nên nhận phiên hụt rất nhỏ và trả về số cp hụt để bên gọi ghi lại.
+
+    Từ chối khi: hụt quá MAX_GAP_RATIO, hụt rải quá MAX_GAP_POINTS chỗ, hoặc Σ KL VƯỢT luỹ kế. Hai điều kiện
+    đầu phải cùng lúc để không mở cửa lại cho bệnh phân trang ngày 20/09 (thiếu `sort` → Σ KL 18,75 tr so với
+    15,5 tr thật, lệch ~21 % và rải khắp chuỗi). Vượt luỹ kế là bệnh khác (trùng tick/dữ liệu hỏng).
+    """
     if not ticks:
-        return False
-    return sum(t["vol"] for t in ticks) == max(t["acc"] for t in ticks)
+        return None
+    total = sum(t["vol"] for t in ticks)
+    acc = max(t["acc"] for t in ticks)
+    gap = acc - total
+    if gap < 0 or gap > acc * MAX_GAP_RATIO:
+        return None
+    if gap and gap_points(ticks) > MAX_GAP_POINTS:
+        return None
+    return gap
 
 
 class VndirectClient:
@@ -137,8 +176,12 @@ class VndirectClient:
             seen.add(t["acc"])
             uniq.append(t)
         uniq.sort(key=lambda t: t["acc"])
-        if not complete(uniq):
-            last_error = f"{symbol}: phiên thiếu tick (Σ KL {sum(t['vol'] for t in uniq):,} ≠ luỹ kế {max((t['acc'] for t in uniq), default=0):,})"
+        gap = shortfall(uniq)
+        if gap is None:
+            last_error = (f"{symbol}: phiên thiếu tick (Σ KL {sum(t['vol'] for t in uniq):,} ≠ luỹ kế "
+                          f"{max((t['acc'] for t in uniq), default=0):,}, {gap_points(uniq)} chỗ hụt)")
             logger.warning("VNDirect %s", last_error)
             return []
+        if gap:
+            logger.warning("VNDirect %s: nguồn thiếu %s cp tick — vẫn nhận phiên", symbol, f"{gap:,}")
         return uniq

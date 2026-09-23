@@ -41,12 +41,18 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # continue-on-error: run_daily trả 1 chỉ để BÁO "có mã lỗi" — nó đã ghi xong latest.json + state.json
+      # trước khi trả. Không có dòng này thì step commit bị skip và một tick thiếu của MỘT mã làm mất trắng
+      # dữ liệu của 38 mã còn lại (TCB hụt 500 cp phiên 23/09/2026 → đỏ 3/3 lượt, mất cả phiên).
       - name: Gom tick + dựng vùng giá
+        id: collect
+        continue-on-error: true
         run: |
           if [ "${{ github.event.inputs.force }}" = "true" ]; then FORCE=--force; else FORCE=; fi
           python -m zone.run_daily $FORCE
 
       - name: Commit kết quả
+        if: always()
         run: |
           git config user.name "price-path-bot"
           git config user.email "price-path-bot@users.noreply.github.com"
@@ -59,3 +65,11 @@ jobs:
           git status --short
           git pull --rebase
           git push
+
+      # Commit xong RỒI mới báo đỏ: vẫn thấy lỗi trên tab Actions mà không đánh đổi dữ liệu.
+      # continue-on-error ở trên làm `failure()` không còn đúng → phải xét outcome của chính step đó.
+      - name: Báo đỏ nếu có mã lỗi
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo "zone.run_daily thoát khác 0 — xem step 'Gom tick + dựng vùng giá'. Dữ liệu (nếu có) đã commit."
+          exit 1

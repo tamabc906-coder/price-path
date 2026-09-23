@@ -6,6 +6,7 @@
   "sessions": {
     "2026-09-18": {"src": "vnd", "est": false, "close": 71.7, "total": 15500700, "ticks": 12669,
                    "levels": {"74.2": [mua, bán, x, mua_lớn, bán_lớn], ...}},
+    // "gap": 500 — chỉ có khi nguồn bỏ sót tick (KL sàn đếm trừ KL tick); xem common.vndirect.shortfall.
     "2026-09-17": {"src": "dnse1m", "est": true, "close": 66.5, "total": ..., "levels": {...}}
   }
 }

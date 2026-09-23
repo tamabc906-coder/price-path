@@ -22,11 +22,30 @@ def test_parse_rows_skips_bad_and_keeps_acc():
     assert out[0]["vol"] == 600 and out[0]["acc"] == 476200 and out[0]["side"] == "PB"
 
 
-def test_complete_requires_sum_equal_last_accumulated():
+def test_shortfall_zero_when_sum_equals_last_accumulated():
     ok = [tick("09:15:00", 74, 100, "ATO", 100), tick("09:16:00", 74.1, 50, "PS", 150)]
-    assert vndirect.complete(ok)
-    assert not vndirect.complete(ok[1:])  # thiếu tick đầu → Σ 50 ≠ 150
-    assert not vndirect.complete([])
+    assert vndirect.shortfall(ok) == 0
+    assert vndirect.shortfall(ok[1:]) is None  # thiếu tick đầu → hụt 100/150 = 67 %, quá xa
+    assert vndirect.shortfall([]) is None
+
+
+def test_shortfall_accepts_one_tiny_missing_tick():
+    # Đúng ca TCB phiên 23/09/2026: nguồn bỏ một tick 500 cp giữa phiên, hụt 0,0013 %.
+    ticks = [tick("09:15:00", 32.0, 6188700, "ATO", 6188700),
+             tick("09:50:47", 32.9, 43800, "PS", 6233000),          # 6.188.700 + 43.800 = 6.232.500 ≠ acc
+             tick("14:45:00", 33.35, 32774100, "ATC", 39007100)]
+    assert vndirect.shortfall(ticks) == 500
+    assert vndirect.gap_points(ticks) == 1
+
+
+def test_shortfall_rejects_scattered_gaps_and_overcount():
+    # Bệnh phân trang 20/09/2026: hụt nhỏ nhưng rải nhiều chỗ → vẫn phải từ chối.
+    scattered = [tick("09:1%d:00" % (i % 10), 32.0, 1_000_000, "PS", (i + 1) * 1_000_000 + i) for i in range(10)]
+    assert vndirect.gap_points(scattered) > vndirect.MAX_GAP_POINTS
+    assert vndirect.shortfall(scattered) is None
+    # Σ KL VƯỢT luỹ kế (trùng tick/dữ liệu hỏng) là bệnh khác — không bao giờ nhận.
+    over = [tick("09:15:00", 74, 100, "ATO", 100), tick("09:16:00", 74.1, 500, "PS", 150)]
+    assert vndirect.shortfall(over) is None
 
 
 # ---- zone/collect ----------------------------------------------------------------------------------
@@ -60,6 +79,14 @@ def test_aggregate_levels_sides_and_big_lots():
     assert s["levels"]["74.5"] == [0, 0, 62300, 0, 0]
     assert s["levels"]["71.7"] == [0, 0, 8520100, 0, 0]
     assert list(s["levels"]) == ["71.7", "74.2", "74.5"]
+
+
+def test_aggregate_records_gap_only_when_source_missed_ticks():
+    full = [tick("09:15:00", 74.5, 62300, "ATO", 62300), tick("10:00:00", 74.2, 100, "PB", 62400)]
+    assert "gap" not in collect.aggregate(full)  # phiên đủ → không đẻ "gap":0 làm phình diff git
+    holed = [tick("09:15:00", 74.5, 62300, "ATO", 62300), tick("10:00:00", 74.2, 100, "PB", 62900)]
+    s = collect.aggregate(holed)
+    assert s["gap"] == 500 and s["total"] == 62400
 
 
 def test_check_volume_tolerance():

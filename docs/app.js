@@ -392,15 +392,37 @@
         Nguồn DNSE ${src.dnse_ok ? "OK" : `<b style="color:${DOWN}">lỗi</b>`} · ${src.n_priced}/${D.watchlist ? D.watchlist.n : "—"} mã có nến${src.unsettled && src.unsettled.length ? ` · chưa chốt: ${esc(src.unsettled.join(", "))}` : ""}${src.late ? " · chốt muộn" : ""}${(D.stale || []).length ? ` · nến cũ: ${esc(D.stale.map((s) => s.symbol).join(", "))}` : ""}<br>
         Kho ${(src.history_rows || 0).toLocaleString("vi-VN")} phiên-mã · pool ${(m.pool_global || 0).toLocaleString("vi-VN")} · ${m.cells_full || 0} ô đủ 6 trục · danh mục ${D.watchlist ? esc(D.watchlist.source) : "—"}`;
     }
-    fetch("data/state.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((st) => {
-      if (!st) return;
-      const dv = st.devices || {}, p = st.push || {};
-      let s = `Job chạy lần cuối ${st.last_run ? esc(st.last_run.slice(0, 16).replace("T", " ")) : "—"} · ${dv.n || 0} máy đã đăng ký (${esc(dv.source || "—")}) · VAPID ${dv.vapid ? "OK" : "THIẾU"}`;
-      if (p.mode) s += ` · lần báo gần nhất: ${esc(p.mode)}, gửi ${p.sent || 0}`;
-      if (p.errors && p.errors.length) s += ` · <b>${esc(p.errors[0])}</b>`;
-      if (st.push_gone_at) s += ` · <b>có máy đã huỷ đăng ký (${esc(st.push_gone_at.slice(0, 10))}) — bấm Bật thông báo lại</b>`;
-      $("stateFoot").innerHTML = s;
-    }).catch(() => {});
+    // Hai state riêng: job daily (data/state.json) và job vùng giá (data/zone/state.json, zone.yml chạy độc
+    // lập). Trước 23/09/2026 state của zone không được đọc ở đâu cả, nên job đỏ 3 lượt liền trong ngày mà
+    // app im lặng — chỉ phát hiện được khi tình cờ mở tab Vùng giá và đọc chữ "phiên ..." nhỏ. Gộp một
+    // Promise.all để hai lần fetch không ghi đè nhau trên cùng ô stateFoot.
+    const getJSON = (u) => fetch(u, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    Promise.all([getJSON("data/state.json"), getJSON("data/zone/state.json")]).then(([st, zs]) => {
+      const rows = [];
+      if (st) {
+        const dv = st.devices || {}, p = st.push || {};
+        let s = `Job chạy lần cuối ${st.last_run ? esc(st.last_run.slice(0, 16).replace("T", " ")) : "—"} · ${dv.n || 0} máy đã đăng ký (${esc(dv.source || "—")}) · VAPID ${dv.vapid ? "OK" : "THIẾU"}`;
+        if (p.mode) s += ` · lần báo gần nhất: ${esc(p.mode)}, gửi ${p.sent || 0}`;
+        if (p.errors && p.errors.length) s += ` · <b>${esc(p.errors[0])}</b>`;
+        if (st.push_gone_at) s += ` · <b>có máy đã huỷ đăng ký (${esc(st.push_gone_at.slice(0, 10))}) — bấm Bật thông báo lại</b>`;
+        rows.push(s);
+      }
+      if (zs) {
+        // state.json của zone chỉ được ghi khi có phiên mới, nên ngày của ran_at cũ hơn phiên job daily
+        // nghĩa là job vùng giá chưa chốt được phiên gần nhất — đúng dấu hiệu của sự cố 23/09/2026.
+        const ran = (zs.ran_at || "").slice(0, 10);
+        // D có thể còn null (khối này nằm ngoài guard ở trên, latest.json tải xong sau) — không so thì thôi.
+        const behind = ran && D && D.trade_date && ran < D.trade_date;
+        const nf = (zs.failed || []).length, nw = (zs.warnings || []).length;
+        let z = `Job vùng giá ${ran ? esc(zs.ran_at.slice(0, 16).replace("T", " ")) : "—"}`;
+        z += behind ? ` · <b style="color:${DOWN}">chậm: phiên gần nhất là ${dmy(D.trade_date)}</b>` : ` · ${zs.collected ? zs.collected.length : 0} mã`;
+        if (nf) z += ` · <b style="color:${DOWN}">lỗi ${nf} mã: ${esc((zs.failed || []).slice(0, 5).join(", "))}</b>`;
+        if (zs.vndirect_last_error) z += ` · <b style="color:${DOWN}">${esc(zs.vndirect_last_error)}</b>`;
+        if (nw) z += ` · ${nw} cảnh báo: ${esc(zs.warnings[0])}`;
+        rows.push(z);
+      }
+      $("stateFoot").innerHTML = rows.join("<br>");
+    });
   }
 
   // ---------------------------------------------------------------- push (chép candle-radar)

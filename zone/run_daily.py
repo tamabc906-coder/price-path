@@ -109,6 +109,8 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
             if warn:
                 warnings.append(f"{sym} {day}: {warn}")
                 log.warning("%s %s: %s", sym, day, warn)
+            if sess.get("gap"):
+                warnings.append(f"{sym} {day}: nguồn thiếu {sess['gap']:,} cp tick (vẫn nhận phiên)")
             if store.put(st, day, sess) or force:
                 if force:
                     st["sessions"][day] = sess
@@ -120,9 +122,16 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
                 skipped.append(sym)
 
     if not collected and not force:
-        # Không ghi cả state.json: workflow commit mọi thay đổi trong docs/data/zone/, ghi là đẻ commit rác.
-        log.info("Không có phiên mới (bỏ qua %d, lỗi %d) — không ghi gì", len(skipped), len(failed))
-        return 0 if not failed else 1
+        # Kho đã có phiên mới hơn bản đã publish thì vẫn phải dựng lại: một lượt trước đó có thể đã ghi
+        # data/zone/*.json rồi chết trước khi ghi latest.json, và vì has_real() đã True nên mọi lượt sau
+        # đều "bỏ qua" hết — latest.json sẽ đứng mãi ở phiên cũ.
+        published = _load(LATEST, {}).get("trade_date", "")
+        stored = max((max(store.load(it["symbol"])["sessions"], default="") for it in items), default="")
+        if stored <= published:
+            # Không ghi cả state.json: workflow commit mọi thay đổi trong docs/data/zone/, ghi là đẻ commit rác.
+            log.info("Không có phiên mới (bỏ qua %d, lỗi %d) — không ghi gì", len(skipped), len(failed))
+            return 0 if not failed else 1
+        log.warning("latest.json đang ở phiên %s nhưng kho đã có %s — dựng lại", published or "—", stored)
 
     symbols = {}
     trade_date = ""
