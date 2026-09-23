@@ -1,4 +1,7 @@
 {
+  "alert_mode": "events",
+  "events_push": ["gap_fill_demand"],
+  "events_enabled": null,
   "p_min": 0.58,
   "n_min": 200,
   "require_q25": false,

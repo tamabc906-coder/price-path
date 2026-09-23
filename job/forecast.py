@@ -1,5 +1,7 @@
 """Lõi dự báo hằng ngày: kho nến → đặc trưng → ô chế độ → pool → nón (bootstrap) → sửa cỡ (conformal) →
-2 kịch bản → P(tăng) = tần suất ô (LightGBM chỉ khi cổng bật). Kèm bước CHẤM ĐIỂM: nón phát h phiên trước
+2 kịch bản → P(tăng) = tần suất ô (LightGBM chỉ khi cổng bật). Lớp SỰ KIỆN (model/events.py): mã có sự kiện đạt
+cổng E1 trong 10 phiên gần nhất mang nón lịch sử sau sự kiện — thứ duy nhất đo ra có hướng; chuông mặc định theo
+sự kiện (alert_mode="events"), luật P(tăng) cũ chỉ chạy khi alert_mode="p10". Kèm bước CHẤM ĐIỂM: nón phát h phiên trước
 đến hạn hôm nay → tỷ lệ mã trúng → cập nhật hệ số giãn. Tách khỏi run_daily để test được bằng kho giả.
 
 Pool dựng lại mỗi ngày từ toàn bộ kho: hàng nào có đủ 20 phiên sau mới vào pool, nên pool tự động chỉ chứa
@@ -14,11 +16,12 @@ from datetime import date
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from common import store as store_mod
 from common.config import ARTIFACTS, INDEX_SYMBOL
-from model import cone, conformal, direction, regime
-from model.features import build_all
+from model import cone, conformal, direction, events, regime
+from model.features import PATH_COLS, build_all
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +30,9 @@ QS = cone.QS
 CONF_STATE = ARTIFACTS / "conformal_state.json"
 COVER_WINDOW = 60          # cửa sổ chấm "đúng cỡ" (đo: 20 phiên dao động quá mạnh với 39 mã tương quan)
 COVER_BAND = 0.06          # ±6 điểm quanh mục tiêu
+EVENTS_STATS = ARTIFACTS / "events_stats.json"      # scripts/measure_events.py --md ghi (cổng + hệ số nới nón)
+EVENT_ACTIVE = 10          # sự kiện còn hiện 10 phiên kể từ ngày xảy ra (= kỳ hạn đo +10p)
+EVENT_MIN_POOL = 30
 
 
 def load_conf_state() -> dict:
@@ -39,6 +45,69 @@ def load_conf_state() -> dict:
 def save_conf_state(state: dict) -> None:
     CONF_STATE.parent.mkdir(parents=True, exist_ok=True)
     CONF_STATE.write_text(json.dumps(state, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+
+def load_event_stats() -> dict:
+    try:
+        return json.loads(EVENTS_STATS.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"events": {}}
+
+
+def enabled_events(cfg: dict, stats: dict) -> list[str]:
+    """settings.events_enabled nếu có, ngược lại các sự kiện ĐẠT cổng E1."""
+    en = cfg.get("events_enabled")
+    if en is None:
+        en = [k for k, v in (stats.get("events") or {}).items() if v.get("pass")]
+    return [k for k in events.CODES if k in en]
+
+
+def event_setup(store: dict, f: pd.DataFrame, syms: list[str]) -> dict:
+    """Cột sự kiện của mọi mã ghép với (c, vol20, đường 20 phiên sau) + pool đường đi sau mỗi loại sự kiện.
+    Pool chỉ gồm hàng có đủ 20 phiên sau → tự động là quá khứ ≥ 20 phiên, không nhìn tương lai."""
+    parts = []
+    for sym in syms:
+        b = store_mod.bars(store, sym)
+        if len(b) < 60:
+            continue
+        e = events.detect(b)
+        e.insert(0, "symbol", sym)
+        parts.append(e)
+    if not parts:
+        return {"frame": pd.DataFrame(), "pools": {}}
+    g = f[["symbol", "d", "c", "vol20", *PATH_COLS]].merge(pd.concat(parts, ignore_index=True), on=["symbol", "d"], how="left")
+    for k in events.CODES:
+        g[k] = g[k].fillna(False).astype(bool)
+    ok = g[PATH_COLS].notna().all(axis=1) & (g["vol20"] > 0)
+    return {"frame": g, "pools": {k: events.pool_steps(g[ok & g[k]]) for k in events.CODES}}
+
+
+def symbol_events(g: pd.DataFrame, sym: str, td: str, codes: list[str], pools: dict, stats: dict, n_sim: int) -> list[dict]:
+    """Sự kiện đang bật của một mã trong EVENT_ACTIVE phiên gần nhất (≤ td), mỗi cái kèm nón neo tại ngày sự kiện."""
+    if g.empty or not codes:
+        return []
+    gs = g[(g["symbol"] == sym) & (g["d"] <= pd.Timestamp(td))].tail(EVENT_ACTIVE + 1).reset_index(drop=True)
+    last, out = len(gs) - 1, []
+    for i, row in gs.iterrows():
+        for k in codes:
+            if not row[k]:
+                continue
+            day = row["d"].date().isoformat()
+            price0, vol0 = float(row["c"]), float(row["vol20"])
+            st = (stats.get("events") or {}).get(k, {})
+            ev = {"code": k, "name": events.NAMES[k], "date": day, "age": int(last - i), "price0": round(price0, 2),
+                  "path": [round(float(x), 2) for x in gs["c"].iloc[i:]],
+                  "stats": {x: st.get(x) for x in ("ex10", "ret10", "win10", "years_win", "years", "n", "cov80")},
+                  "n_pool": int(len(pools.get(k, ()))), "q": None, "q_log": None, "p_touch": None}
+            pool = pools.get(k)
+            if pool is not None and len(pool) >= EVENT_MIN_POOL and vol0 > 0:
+                paths = cone.simulate(vol0, pool, n=n_sim, seed=cone.seed_for(sym, day))
+                raw = _q_log_dict(cone.quantiles_batch(paths[None, ...])[0])
+                q_log = {h: {str(q): v for q, v in events.widen({int(q): v for q, v in d.items()}, st.get("scale")).items()}
+                         for h, d in raw.items()}
+                ev.update(q_log=q_log, q=_to_prices(q_log, price0), p_touch=round(events.touch_prob(paths), 3))
+            out.append(ev)
+    return out
 
 
 def calendar(store: dict) -> list[str]:
@@ -64,13 +133,15 @@ def forecast_all(store: dict, items: list[dict], trade_date: date, cfg: dict, co
     f = build_all(store, syms, INDEX_SYMBOL, store_mod.bars)
     keys = regime.keys_for(f)
     pools = regime.build_pools(f, keys)
-    return forecast_from(f, keys, pools, items, trade_date, cfg, conf_state, n_sim)
+    ev = event_setup(store, f, syms)
+    return forecast_from(f, keys, pools, items, trade_date, cfg, conf_state, n_sim, ev=ev)
 
 
 def forecast_from(f, keys, pools: dict, items: list[dict], trade_date: date, cfg: dict, conf_state: dict,
-                  n_sim: int = cone.N_SIM) -> tuple[list[dict], list[dict], dict]:
+                  n_sim: int = cone.N_SIM, ev: dict | None = None) -> tuple[list[dict], list[dict], dict]:
     """Bản dùng đặc trưng/pool đã dựng sẵn (scripts/backfill.py gọi nhiều ngày liên tiếp).
-    f phải chỉ chứa hàng có ngày ≤ trade_date; pools phải dựng từ hàng có t+20 ≤ trade_date."""
+    f phải chỉ chứa hàng có ngày ≤ trade_date; pools phải dựng từ hàng có t+20 ≤ trade_date.
+    ev = event_setup(...) hoặc None (không tính sự kiện)."""
     syms = sorted(it["symbol"] for it in items)
     names = {it["symbol"]: it.get("company_name") or it.get("name") or "" for it in items}
     glob = pools.get((), np.zeros((0, 20), np.float32))
@@ -80,6 +151,10 @@ def forecast_from(f, keys, pools: dict, items: list[dict], trade_date: date, cfg
         log.warning("gate bật nhưng thiếu booster/lightgbm — dùng tần suất ô")
         boosters = {}
     td = trade_date.isoformat()
+    ev_stats = load_event_stats()
+    ev_codes = enabled_events(cfg, ev_stats) if ev else []
+    ev_push = set(cfg.get("events_push") or [])
+    mode = cfg.get("alert_mode", "events")
     out, stale = [], []
     for sym in syms:
         g = f[f["symbol"] == sym]
@@ -108,8 +183,13 @@ def forecast_from(f, keys, pools: dict, items: list[dict], trade_date: date, cfg
         if boosters:
             p5, p10 = float(direction.predict(boosters[5], g.iloc[[-1]])[0]), float(direction.predict(boosters[10], g.iloc[[-1]])[0])
             p_src = "lgbm"
-        alert = (p10 >= cfg["p_min"] and n >= cfg["n_min"]
-                 and (not cfg.get("require_q25") or q_adj["10"]["25"] > 0))
+        evs = symbol_events(ev["frame"], sym, td, ev_codes, ev["pools"], ev_stats, n_sim) if ev_codes else []
+        alert_events = [e["code"] for e in evs if e["age"] == 0 and e["code"] in ev_push]
+        if mode == "p10":
+            alert = (p10 >= cfg["p_min"] and n >= cfg["n_min"]
+                     and (not cfg.get("require_q25") or q_adj["10"]["25"] > 0))
+        else:
+            alert = bool(alert_events)
         item = {
             "symbol": sym, "name": names[sym], "price": price, "change_pct": chg, "volume": int(last["v"]), "ok": True,
             "key": list(key), "chips": regime.chips(key), "level": int(level), "n": int(n),
@@ -118,11 +198,17 @@ def forecast_from(f, keys, pools: dict, items: list[dict], trade_date: date, cfg
             "base10": round(regime.freq_up(glob, 10), 3), "p_src": p_src,
             "q": _to_prices(q_adj, price), "q_log": q_adj,
             "scenarios": cone.scenarios(paths, price, seed=cone.seed_for(sym, td)) if cfg.get("scenarios", True) else [],
-            "alert": bool(alert),
+            "alert": bool(alert), "alert_events": alert_events, "events": evs,
         }
         out.append(item)
     info = {"rows": int(len(f)), "pool_global": int(len(glob)), "cells_full": sum(1 for k in pools if len(k) == len(regime.AXES)),
-            "gate_enabled": bool(gate.get("enabled")), "p_src": "lgbm" if boosters else "regime_freq"}
+            "gate_enabled": bool(gate.get("enabled")), "p_src": "lgbm" if boosters else "regime_freq",
+            "events_meta": {"alert_mode": mode, "enabled": ev_codes, "push": [k for k in ev_codes if k in ev_push],
+                            "active_days": EVENT_ACTIVE, "generated": ev_stats.get("generated"),
+                            "pools": {k: int(len(p)) for k, p in (ev or {}).get("pools", {}).items()},
+                            "stats": {k: {x: v.get(x) for x in ("name", "pass", "n", "ex10", "ret10", "win10", "years_win",
+                                                                "years", "ex5", "ex20", "cov80", "scale")}
+                                      for k, v in (ev_stats.get("events") or {}).items()}}}
     return out, stale, info
 
 

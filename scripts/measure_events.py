@@ -93,10 +93,26 @@ def passes(s10: dict) -> bool:
             and s10["ex_no22"] > 0 and s10["ex"] >= GATE_EDGE)
 
 
-def steps_of(rows: pd.DataFrame) -> np.ndarray:
-    cum = rows[PATH_COLS].to_numpy(np.float64)
-    st = np.diff(np.concatenate([np.zeros((len(rows), 1)), cum], axis=1), axis=1)
-    return (st / rows["vol20"].to_numpy()[:, None]).astype(np.float32)
+steps_of = events.pool_steps
+SCALES = np.round(np.arange(0.8, 3.0001, 0.05), 2)
+
+
+def fit_scale(q: np.ndarray, real: np.ndarray) -> dict:
+    """Hệ số nới nhỏ nhất (0,8→3,0) để nón mức 50/80/90 bao đủ mức đó trên các hàng walk-forward."""
+    from model.conformal import LEVEL_QS
+    med = q[:, cone.QS.index(50)]
+    out, cov = {}, {}
+    for lv, (lo, hi) in LEVEL_QS.items():
+        jl, jh = cone.QS.index(lo), cone.QS.index(hi)
+        s_ok = SCALES[-1]
+        for s in SCALES:
+            c = ((med + s * (q[:, jl] - med) <= real) & (real <= med + s * (q[:, jh] - med))).mean()
+            if c >= lv / 100:
+                s_ok = s
+                break
+        out[str(lv)] = float(s_ok)
+        cov[str(lv)] = float(((med + s_ok * (q[:, jl] - med) <= real) & (real <= med + s_ok * (q[:, jh] - med))).mean())
+    return {"scale": out, "cov_after": cov}
 
 
 def touch(cum: np.ndarray) -> np.ndarray:
@@ -118,6 +134,7 @@ def walk_forward(F: pd.DataFrame, n_sim: int, seed: int) -> dict:
     ok = F[PATH_COLS].notna().all(axis=1) & (F["vol20"] > 0) & keys.notna()
     last = int(F["year"].max())
     res: dict = {k: {} for k in events.CODES}
+    allq: dict = {k: ([], []) for k in events.CODES}
     for Y in range(WF_FROM, last + 1):
         cutoff = pd.Timestamp(f"{Y}-01-01") - pd.Timedelta(days=35)
         train = F[F["d"] < cutoff]
@@ -139,6 +156,8 @@ def walk_forward(F: pd.DataFrame, n_sim: int, seed: int) -> dict:
                 p, _, _ = regime.pool_for(kk, app_pools)
                 q_app[i] = cone.quantiles_batch(cone.simulate_batch(np.array([v]), p, n=n_sim, rng=rng), hs=(10,))[0, 0, :]
             real = te["fr10"].to_numpy(np.float64)
+            allq[k][0].append(q_ev)
+            allq[k][1].append(real)
             y_tc = touch(te[PATH_COLS[:BH]].to_numpy(np.float64))
             j10, j50, j90 = cone.QS.index(10), cone.QS.index(50), cone.QS.index(90)
             res[k][Y] = {
@@ -152,6 +171,9 @@ def walk_forward(F: pd.DataFrame, n_sim: int, seed: int) -> dict:
                 "brier_tc_ev": float(np.mean((p_tc - y_tc) ** 2)),
             }
         log(f"walk-forward {Y} xong")
+    for k, (qs, rs) in allq.items():
+        if qs:
+            res[k]["fit"] = fit_scale(np.concatenate(qs), np.concatenate(rs))
     return res
 
 
@@ -187,13 +209,14 @@ def main() -> int:
                "events": {}}
         for k in events.CODES:
             s10 = stats[k][10]
-            ws = [w for w in wf[k].values() if "cov80_ev" in w]
+            ws = [w for y, w in wf[k].items() if y != "fit" and "cov80_ev" in w]
             cov = sum(w["cov80_ev"] * w["n"] for w in ws) / max(1, sum(w["n"] for w in ws)) if ws else None
             art["events"][k] = {"name": events.NAMES[k], "pass": passes(s10), "n": s10.get("n", 0),
                                 "ex10": s10.get("ex"), "ret10": s10.get("ret"), "win10": s10.get("win"),
                                 "years_win": s10.get("years_win"), "years": s10.get("years"),
                                 "ex5": stats[k][5].get("ex"), "ex20": stats[k][20].get("ex"),
-                                "cov80": cov}
+                                "cov80": cov, "scale": (wf[k].get("fit") or {}).get("scale"),
+                                "cov_after": (wf[k].get("fit") or {}).get("cov_after")}
         STATS.parent.mkdir(parents=True, exist_ok=True)
         STATS.write_text(json.dumps(art, ensure_ascii=False, indent=1), encoding="utf-8")
         log(f"ghi reports/events-{stamp}.md + {STATS.name}")
@@ -235,7 +258,7 @@ def render(stats, wf, bm, E, n_sim, stamp, last_day) -> list[str]:
     L.append("| Sự kiện | Năm | Hàng | Pool | Trung vị sự kiện | Trung vị app | Lãi thật | cov80 sự kiện | cov80 app | Pinball sự kiện | Pinball app | P chạm +5 % dự / thật |")
     L.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for k in events.CODES:
-        for Y, w in sorted(wf[k].items()):
+        for Y, w in sorted((y, w) for y, w in wf[k].items() if y != "fit"):
             if "cov80_ev" not in w:
                 L.append(f"| {events.NAMES[k]} | {Y} | {w['n']} | {w['pool']} | | | | | | | | |")
                 continue
@@ -247,13 +270,26 @@ def render(stats, wf, bm, E, n_sim, stamp, last_day) -> list[str]:
     L.append("| Sự kiện | Hàng | cov80 sự kiện | cov80 app | Pinball sự kiện | Pinball app | Trung vị sự kiện | Trung vị app | Lãi thật |")
     L.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for k in events.CODES:
-        ws = [w for w in wf[k].values() if "cov80_ev" in w]
+        ws = [w for y, w in wf[k].items() if y != "fit" and "cov80_ev" in w]
         n = sum(w["n"] for w in ws)
         if not n:
             continue
         avg = lambda key: sum(w[key] * w["n"] for w in ws) / n
         L.append(f"| {events.NAMES[k]} | {n} | {avg('cov80_ev')*100:.0f} | {avg('cov80_app')*100:.0f} | {avg('pin_ev'):.3f} | "
                  f"{avg('pin_app'):.3f} | {pc(avg('med_ev'))} | {pc(avg('med_app'))} | {pc(avg('real_mean'))} |")
+    L.append("")
+    L.append("## Hệ số nới nón theo sự kiện (app dùng)\n")
+    L.append("Ngày có sự kiện biến động hơn vol20 phản ánh → nón sự kiện hẹp. Hệ số s nhỏ nhất (quét 0,8→3,0) để nón "
+             "`trung vị + s·(phân vị − trung vị)` bao đủ mức trên mọi hàng walk-forward; app nhân cố định theo sự kiện.\n")
+    L.append("| Sự kiện | s 50 % | s 80 % | s 90 % | cov 50/80/90 sau nới |")
+    L.append("|---|---:|---:|---:|---|")
+    for k in events.CODES:
+        fit = wf[k].get("fit")
+        if not fit:
+            continue
+        sc, ca = fit["scale"], fit["cov_after"]
+        L.append(f"| {events.NAMES[k]} | {sc['50']:.2f} | {sc['80']:.2f} | {sc['90']:.2f} | "
+                 f"{ca['50']*100:.0f} / {ca['80']*100:.0f} / {ca['90']*100:.0f} |")
     return L
 
 

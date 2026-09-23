@@ -12,7 +12,12 @@ from common.config import HTTP_TIMEOUT, SITE_DATA, WORKER_TOKEN, WORKER_URL
 logger = logging.getLogger(__name__)
 
 DEFAULTS = {
-    "p_min": 0.58,             # P(tăng 10p) tối thiểu để báo (đo: chỉ ~15 % hàng đạt; 0,60 → 8,5 %)
+    # "events": chuông theo sự kiện đạt cổng E1 (reports/events-*.md); "p10": luật P(tăng) cũ (đo ≈ mốc chung, tắt 23/09/2026)
+    "alert_mode": "events",
+    # chỉ push sự kiện CHƯA có ở app khác: SC đã có ở Wyckoff Radar, trần+KL ở Candle Radar
+    "events_push": ["gap_fill_demand"],
+    "events_enabled": None,    # None = các sự kiện ĐẠT cổng trong model/artifacts/events_stats.json
+    "p_min": 0.58,             # P(tăng 10p) tối thiểu để báo khi alert_mode="p10" (đo: chỉ ~15 % hàng đạt)
     "n_min": 200,              # ô chế độ phải có ≥ ngần này mẫu lịch sử mới đáng báo
     "require_q25": False,      # thêm điều kiện phân vị 25 % tại +10 phiên > giá hôm nay (rất hiếm)
     "digest_threshold": 6,     # quá số mã này → một thông báo tổng hợp

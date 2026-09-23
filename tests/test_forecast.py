@@ -79,3 +79,56 @@ def test_verdict_bands():
     for _ in range(60):
         conformal.update(conf, 10, 80, 0.60)
     assert forecast.verdict(conf)["status"] == "narrow"
+
+
+def _plant_gap_fill(st, sym, days):
+    """Ghi đè 12 nến cuối của một mã: 10 phiên giảm sâu xuống dưới đáy 60p, nến đỏ mở gap −2 %, nến xanh lấp gap."""
+    rows = st["bars"][sym]
+    low60 = min(r[3] for r in rows[-72:-12])
+    c = low60 * 1.25
+    for j in range(10):
+        o, c = c, c * 0.95
+        rows[-12 + j] = [rows[-12 + j][0], o, o * 1.005, c * 0.995, c, 100000]
+    a = c
+    rows[-2] = [rows[-2][0], a * 0.98, a * 0.985, a * 0.955, a * 0.96, 150000]
+    rows[-1] = [rows[-1][0], a * 0.96, a * 0.995, a * 0.955, a * 0.99, 150000]
+
+
+def test_event_today_triggers_alert_in_events_mode():
+    st, days = _store()
+    _plant_gap_fill(st, "AAA", days)
+    items = [{"symbol": s} for s in ("AAA", "BBB")]
+    cfg = dict(settings.DEFAULTS, events_enabled=["gap_fill_demand"])
+    fc, _, info = forecast.forecast_all(st, items, days[-1], cfg, conformal.new_state(forecast.HS), n_sim=100)
+    a, b = fc
+    assert [e["code"] for e in a["events"]] == ["gap_fill_demand"] and a["events"][0]["age"] == 0
+    assert a["alert"] and a["alert_events"] == ["gap_fill_demand"]
+    assert a["events"][0]["path"] == [round(a["price"], 2)]
+    assert b["events"] == [] and not b["alert"]
+    assert info["events_meta"]["alert_mode"] == "events" and info["events_meta"]["push"] == ["gap_fill_demand"]
+    # sự kiện bật nhưng không nằm trong events_push → hiện, không réo
+    cfg2 = dict(cfg, events_push=[])
+    fc2, _, _ = forecast.forecast_all(st, items, days[-1], cfg2, conformal.new_state(forecast.HS), n_sim=100)
+    assert fc2[0]["events"] and not fc2[0]["alert"]
+
+
+def test_p10_mode_keeps_old_rule():
+    st, days = _store()
+    _plant_gap_fill(st, "AAA", days)
+    items = [{"symbol": "AAA"}]
+    cfg = dict(settings.DEFAULTS, alert_mode="p10", p_min=0.0, n_min=0, events_enabled=["gap_fill_demand"])
+    fc, _, _ = forecast.forecast_all(st, items, days[-1], cfg, conformal.new_state(forecast.HS), n_sim=100)
+    assert fc[0]["alert"] is True                         # p10 ≥ 0 luôn đúng → luật cũ
+    cfg["p_min"] = 1.01
+    fc, _, _ = forecast.forecast_all(st, items, days[-1], cfg, conformal.new_state(forecast.HS), n_sim=100)
+    assert fc[0]["alert"] is False and fc[0]["events"]    # có sự kiện nhưng chế độ p10 không réo theo sự kiện
+
+
+def test_event_payload_fields():
+    from job import push
+    it = {"symbol": "AAA", "price": 12.34}
+    ev = {"code": "gap_fill_demand", "name": "Gap giảm được lấp tại đáy", "p_touch": 0.47,
+          "q": {"10": {"10": 11.0, "90": 14.2}}, "stats": {"ex10": 0.0417, "years_win": 5, "years": 7}}
+    p = push.event_payload(it, ev, "2026-09-24")
+    assert p["tag"] == "pp-ev-AAA" and p["hot"] and "24/09" in p["title"] and "Gap giảm" in p["title"]
+    assert "+4,2 %" in p["body"] and "5/7" in p["body"] and "47 %" in p["body"] and "11.0 – 14.2" in p["body"]

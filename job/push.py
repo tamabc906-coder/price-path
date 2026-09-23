@@ -118,12 +118,35 @@ def symbol_payload(item: dict, trade_date: str) -> dict:
     }
 
 
-def digest_payload(items: list[dict], trade_date: str) -> dict:
-    parts = [f"{it['symbol']} {round(it['p10'] * 100)} %" for it in items]
+def _pc(x) -> str:
+    return "—" if x is None else f"{x * 100:+.1f} %".replace(".", ",")
+
+
+def event_payload(item: dict, ev: dict, trade_date: str) -> dict:
+    """Một thông báo cho MỘT sự kiện mới hôm nay: số lịch sử của sự kiện + nón sự kiện 80 % tại +10 phiên."""
+    st = ev.get("stats") or {}
+    bits = [f"giá {item['price']:.2f}", f"lịch sử vượt mốc {_pc(st.get('ex10'))}/10p, đúng {st.get('years_win')}/{st.get('years')} năm"]
+    q10 = (ev.get("q") or {}).get("10")
+    if q10:
+        bits.append(f"nón 80 % (+10p): {q10['10']:.1f} – {q10['90']:.1f}")
+    if ev.get("p_touch") is not None:
+        bits.append(f"chạm +5 % trước −5 %: {round(ev['p_touch'] * 100)} %")
     return {
-        "kind": "digest", "title": f"{len(items)} mã qua ngưỡng P(tăng) · phiên {_dm(trade_date)}",
-        "body": " · ".join(parts), "url": "./#today", "tag": "pp-digest", "hot": True,
+        "kind": "event", "title": f"▲ {item['symbol']} · {ev['name']} · phiên {_dm(trade_date)}",
+        "body": " · ".join(bits), "symbol": item["symbol"], "event": ev["code"], "url": "./#today",
+        "tag": f"pp-ev-{item['symbol']}", "hot": True,
     }
+
+
+def digest_payload(items: list[dict], trade_date: str, mode: str = "p10") -> dict:
+    if mode == "events":
+        parts = [f"{it['symbol']} ({', '.join(e['name'] for e in it['events'] if e['code'] in it.get('alert_events', []))})"
+                 for it in items]
+        title = f"{len(items)} mã có sự kiện · phiên {_dm(trade_date)}"
+    else:
+        parts = [f"{it['symbol']} {round(it['p10'] * 100)} %" for it in items]
+        title = f"{len(items)} mã qua ngưỡng P(tăng) · phiên {_dm(trade_date)}"
+    return {"kind": "digest", "title": title, "body": " · ".join(parts), "url": "./#today", "tag": "pp-digest", "hot": True}
 
 
 def heartbeat_payload(cov80: float | None, trade_date: str) -> dict:
@@ -134,7 +157,7 @@ def heartbeat_payload(cov80: float | None, trade_date: str) -> dict:
 
 def test_payload() -> dict:
     return {"kind": "test", "title": "Thông báo thử — máy này đã nhận được",
-            "body": "Khi có mã qua ngưỡng P(tăng) sau phiên, thẻ như thế này sẽ hiện kể cả khi app đang đóng.",
+            "body": "Khi có mã dính sự kiện đã đo có lợi thế (gap giảm được lấp tại đáy) sau phiên, thẻ như thế này sẽ hiện kể cả khi app đang đóng.",
             "url": "./#today", "tag": "pp-test"}
 
 

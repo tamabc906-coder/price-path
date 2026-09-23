@@ -47,3 +47,14 @@ def test_gap_fill_demand_fires():
     add(a_close * 0.96, a_close * 0.99)        # xanh, đóng trên mở của nến đỏ
     e = events.detect(b)
     assert bool(e["gap_fill_demand"].iloc[-1])
+
+
+def test_pool_steps_and_widen():
+    import pandas as pd
+    from model.features import PATH_COLS
+    rows = pd.DataFrame([[0.01 * (k + 1) for k in range(20)] + [0.02]], columns=PATH_COLS + ["vol20"])
+    st = events.pool_steps(rows)
+    assert st.shape == (1, 20) and np.allclose(st, 0.5)
+    q = {5: -0.1, 10: -0.08, 25: -0.04, 50: 0.0, 75: 0.04, 90: 0.08, 95: 0.1}
+    w = events.widen(q, {"50": 1.0, "80": 1.5, "90": 2.0})
+    assert w[50] == 0 and w[25] == -0.04 and np.isclose(w[90], 0.12) and np.isclose(w[5], -0.2)

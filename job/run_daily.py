@@ -101,13 +101,18 @@ def _history(days: int, scores: list[dict]) -> list[dict]:
     return out
 
 
-def _send_alerts(alerts: list[dict], trade_iso: str, subs: list[dict], digest_threshold: int) -> dict:
+def _send_alerts(alerts: list[dict], trade_iso: str, subs: list[dict], digest_threshold: int,
+                 alert_mode: str = "events") -> dict:
     res = {"sent": 0, "gone": 0, "failed": 0, "errors": [], "mode": "none", "n_symbols": len(alerts)}
     if not alerts:
         return res
     if len(alerts) > digest_threshold:
         res["mode"] = "digest"
-        payloads = [push.digest_payload(alerts, trade_iso)]
+        payloads = [push.digest_payload(alerts, trade_iso, alert_mode)]
+    elif alert_mode == "events":
+        res["mode"] = "per_event"
+        payloads = [push.event_payload(it, ev, trade_iso) for it in alerts
+                    for ev in it["events"] if ev["code"] in it["alert_events"] and ev["age"] == 0]
     else:
         res["mode"] = "per_symbol"
         payloads = [push.symbol_payload(it, trade_iso) for it in alerts]
@@ -179,16 +184,17 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
     fc, stale, info = forecast.forecast_all(hist, items, trade_date, cfg, conf_state)
     alerts = [it for it in fc if it.get("ok") and it["alert"]]
     ver = forecast.verdict(conf_state)
-    log.info("Phiên %s: %d dự báo, %d mã nến cũ, %d qua ngưỡng (p_min %.2f, n_min %d) · pool %s hàng, %d ô đủ trục · %s",
-             trade_iso, sum(1 for it in fc if it.get("ok")), len(stale), len(alerts), cfg["p_min"], cfg["n_min"],
-             f"{info['pool_global']:,}", info["cells_full"], ver["text"])
+    em = info["events_meta"]
+    log.info("Phiên %s: %d dự báo, %d mã nến cũ, %d cảnh báo (chế độ %s, sự kiện bật %s, push %s) · pool %s hàng, %d ô đủ trục · %s",
+             trade_iso, sum(1 for it in fc if it.get("ok")), len(stale), len(alerts), em["alert_mode"], em["enabled"],
+             em["push"], f"{info['pool_global']:,}", info["cells_full"], ver["text"])
 
     push_res: dict = {"skipped": True}
     if not dry_run and not no_push:
         subs, src = push.subscriptions()
         push_res = {"source": src, "n_devices": len(subs)}
         if subs and push.configured():
-            push_res.update(_send_alerts(alerts, trade_iso, subs, int(cfg.get("digest_threshold") or 6)))
+            push_res.update(_send_alerts(alerts, trade_iso, subs, int(cfg.get("digest_threshold") or 6), em["alert_mode"]))
             if cfg.get("heartbeat") and now.weekday() == 0:
                 push_res["heartbeat"] = push.send(push.heartbeat_payload(ver["cov"], trade_iso), subs)["sent"]
             if push.test_requested():
@@ -212,7 +218,7 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
                            "per_h": {h: {k: v for k, v in d.items() if k != "rows"} for h, d in (gate.get("per_h") or {}).items()},
                            "rows": {h: d.get("rows", []) for h, d in (gate.get("per_h") or {}).items()},
                            "trained_at": gate.get("trained_at")}},
-        "verdict": ver, "stale": stale,
+        "events_meta": em, "verdict": ver, "stale": stale,
         "items": [{k: v for k, v in it.items() if k != "q_log"} for it in fc],
         "alerts": [it["symbol"] for it in alerts], "push": push_res,
     }
@@ -226,11 +232,22 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
         for it in fc:
             if not it.get("ok"):
                 print(f"  ? {it['symbol']} {it.get('reason')}")
+        print(f"Sự kiện (bật {em['enabled']}, push {em['push']}, hiện {em['active_days']} phiên):")
+        for it in fc:
+            for e in it.get("events") or []:
+                q = (e.get("q") or {}).get("10") or {}
+                print(f"  {'🔔' if e['code'] in it.get('alert_events', []) else '  '} {it['symbol']:<5} {e['name']} · {e['date']} "
+                      f"(cách {e['age']} phiên) · giá lúc đó {e['price0']} → nay {it['price']} · nón80 +10p "
+                      f"{q.get('10', '—')}–{q.get('90', '—')} · chạm +5 % trước: {e.get('p_touch')}")
         return 0
 
     _dump(daily_file, {"trade_date": trade_iso, "generated_at": latest["generated_at"], "late": late,
                        "forecasts": {it["symbol"]: {"price": it["price"], "q_log": it["q_log"], "p10": it["p10"],
-                                                    "alert": it["alert"], "level": it["level"], "n": it["n"]}
+                                                    "alert": it["alert"], "level": it["level"], "n": it["n"],
+                                                    "events": [{"code": e["code"], "date": e["date"], "age": e["age"],
+                                                                "price0": e["price0"],
+                                                                "q_log10": (e.get("q_log") or {}).get("10")}
+                                                               for e in it.get("events") or []]}
                                      for it in fc if it.get("ok")},
                        "alerts": [it["symbol"] for it in alerts], "stale": stale})
     latest["history"] = _history(int(cfg.get("history_days") or 30), all_scores)

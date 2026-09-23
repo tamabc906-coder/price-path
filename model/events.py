@@ -16,7 +16,8 @@ import numpy as np
 import pandas as pd
 
 from . import wyckoff
-from .features import LIMIT_PCT
+from .conformal import LEVEL_QS
+from .features import LIMIT_PCT, PATH_COLS
 
 CODES = ("climax", "sc", "red_vol_demand", "gap_fill_demand")
 NAMES = {
@@ -86,3 +87,35 @@ def dedup(raw: np.ndarray, n: int = DEDUP) -> np.ndarray:
             keep[i] = True
             last = i
     return keep
+
+
+def pool_steps(rows: pd.DataFrame) -> np.ndarray:
+    """Hàng sự kiện có đủ 20 phiên sau → (n, 20) lợi suất log TỪNG PHIÊN / vol20 tại t (cùng khuôn regime.build_pools)."""
+    cum = rows[PATH_COLS].to_numpy(np.float64)
+    st = np.diff(np.concatenate([np.zeros((len(rows), 1)), cum], axis=1), axis=1)
+    return (st / rows["vol20"].to_numpy()[:, None]).astype(np.float32)
+
+
+UP5, DN5, TOUCH_H = float(np.log(1.05)), float(np.log(0.95)), 10
+
+
+def touch_prob(paths: np.ndarray) -> float:
+    """paths (n, ≥10) lợi suất log cộng dồn → tỷ lệ đường chạm +5 % TRƯỚC −5 % trong 10 phiên."""
+    if len(paths) == 0:
+        return float("nan")
+    c = paths[:, :TOUCH_H]
+    hu, hd = c >= UP5, c <= DN5
+    tu = np.where(hu.any(axis=1), hu.argmax(axis=1), TOUCH_H + 1)
+    td = np.where(hd.any(axis=1), hd.argmax(axis=1), TOUCH_H + 1)
+    return float((tu < td).mean())
+
+
+def widen(q_log: dict[int, float], scale: dict) -> dict[int, float]:
+    """Nới nón quanh trung vị theo hệ số cố định của sự kiện (khuôn model/conformal.py::adjust)."""
+    out = dict(q_log)
+    med = q_log[50]
+    for lv, (lo, hi) in LEVEL_QS.items():
+        s = float((scale or {}).get(str(lv), 1.0))
+        out[lo] = med + s * (q_log[lo] - med)
+        out[hi] = med + s * (q_log[hi] - med)
+    return out
