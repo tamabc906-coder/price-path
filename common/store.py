@@ -106,3 +106,37 @@ def ensure(store: dict, items: list[dict], client, days: int = FULL_DAYS) -> lis
         fetched.append(sym)
         logger.info("Tải trọn lịch sử %s: %d nến từ %s", sym, len(b), b[0]["d"])
     return fetched
+
+
+# Giá đóng cửa của cùng một phiên ĐÃ QUA lệch quá ngần này giữa nguồn và kho → nguồn đã điều chỉnh
+# giá (GDKHQ: chia thưởng, cổ tức). Nến phiên cuối không tính — nguồn hay sửa lại khối lượng/giá ATC.
+ADJ_TOLERANCE = 0.005
+
+
+def adjusted_symbols(store: dict, new_by_symbol: dict[str, list[dict]]) -> list[tuple[str, str, float]]:
+    """Mã mà nguồn vừa điều chỉnh lại giá quá khứ: [(mã, phiên lệch nhiều nhất, tỉ lệ nguồn/kho)].
+
+    Vì sao cần: `merge` chỉ ghi đè đoạn vừa tải, phần cũ hơn giữ nguyên. Khi DNSE hạ giá lịch sử sau
+    ngày GDKHQ, kho thành hai hệ giá ghép lại — VPB 26/08/2026 (hệ số 0,793): biểu đồ có cú rơi 20 %
+    không có thật, và DNSE điều chỉnh MUỘN (kho dựng 19/09 vẫn nhận giá chưa điều chỉnh), nên đoạn so
+    phải dài chứ không chỉ vài phiên quanh ngày GDKHQ.
+    """
+    out = []
+    for sym, bars in new_by_symbol.items():
+        rows = {r[0]: r[4] for r in store["bars"].get(sym, [])}
+        worst = None
+        for b in bars[:-1]:
+            old = rows.get(b["d"].isoformat())
+            if not old:
+                continue
+            ratio = b["c"] / old
+            if abs(ratio - 1) > ADJ_TOLERANCE and (worst is None or abs(ratio - 1) > abs(worst[1] - 1)):
+                worst = (b["d"].isoformat(), round(ratio, 4))
+        if worst:
+            out.append((sym, worst[0], worst[1]))
+    return out
+
+
+def replace(store: dict, symbol: str, bars: list[dict]) -> None:
+    """Thay TOÀN BỘ lịch sử một mã bằng bản mới tải (sau khi nguồn điều chỉnh giá)."""
+    store["bars"][symbol] = from_bars(sorted(bars, key=lambda b: b["d"]))

@@ -63,3 +63,31 @@ def test_ensure_fetches_only_missing_and_index():
     assert got == ["NEW", "VNINDEX"]
     assert c.calls == [("stock", "NEW", 123), ("index", "VNINDEX", 123)]
     assert st["symbols"]["NEW"]["exchange"] == "HNX" and st["symbols"]["VNINDEX"]["exchange"] == "index"
+
+
+def test_nguon_dieu_chinh_gia_qua_khu_thi_nhan_ra():
+    """VPB 26/08/2026: DNSE hạ giá trước GDKHQ theo hệ số 0,793 — kho giữ giá cũ phải bị phát hiện."""
+    st = store.empty()
+    store.merge(st, "VPB", [_bar("2026-08-25", 26.4), _bar("2026-08-26", 21.22), _bar("2026-09-24", 22.1)])
+    store.merge(st, "HPG", [_bar("2026-08-25", 25.0), _bar("2026-09-24", 26.0)])
+    new = {
+        "VPB": [_bar("2026-08-25", 20.95), _bar("2026-08-26", 21.22), _bar("2026-09-24", 22.1)],
+        "HPG": [_bar("2026-08-25", 25.0), _bar("2026-09-24", 26.3)],   # chỉ phiên cuối đổi → không tính
+    }
+    adj = store.adjusted_symbols(st, new)
+    assert [a[0] for a in adj] == ["VPB"]
+    assert adj[0][1] == "2026-08-25" and abs(adj[0][2] - 20.95 / 26.4) < 1e-3
+
+
+def test_lech_nho_khong_coi_la_dieu_chinh():
+    st = store.empty()
+    store.merge(st, "GAS", [_bar("2026-09-01", 60.0), _bar("2026-09-24", 61.0)])
+    assert store.adjusted_symbols(st, {"GAS": [_bar("2026-09-01", 60.2), _bar("2026-09-24", 61.0)]}) == []
+
+
+def test_replace_thay_tron_lich_su():
+    st = store.empty()
+    store.merge(st, "VPB", [_bar("2026-08-25", 26.4), _bar("2026-08-26", 21.22)])
+    store.replace(st, "VPB", [_bar("2026-08-26", 21.22), _bar("2020-01-02", 5.0), _bar("2026-08-25", 20.95)])
+    assert [r[0] for r in st["bars"]["VPB"]] == ["2020-01-02", "2026-08-25", "2026-08-26"]
+    assert st["bars"]["VPB"][1][4] == 20.95
