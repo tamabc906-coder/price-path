@@ -340,9 +340,15 @@
       let x = left;
       segs.forEach(([v, col]) => { if (v > 0) { out.push(`<rect x="${f1(x)}" y="${f1(y)}" width="${f1(Math.max(0.6, v * k))}" height="${f1(h)}" fill="${col}" fill-opacity="${op.toFixed(2)}"/>`); x += v * k; } });
     });
-    // POC
-    out.push(`<line x1="${left}" y1="${f1(yTop(p.poc) + rowH / 2)}" x2="${W - right}" y2="${f1(yTop(p.poc) + rowH / 2)}" stroke="${GOLDC}" stroke-width="1.5"/>`);
-    out.push(`<text x="${W - right}" y="${f1(yTop(p.poc) - 1)}" font-size="8" fill="${GOLD2}" text-anchor="end" font-family="Archivo,Arial">POC ${px(bins[p.poc][0] + w / 2)}</text>`);
+    // POC + VAH/VAL (mép trên/dưới dải Value Area). Nhãn gom lại rồi dời cho khỏi đè — chỉ dời chữ, không dời vạch.
+    const labs = [];
+    const yPoc = f1(yTop(p.poc) + rowH / 2), yVah = f1(yTop(p.va[1])), yVal = f1(yTop(p.va[0]) + rowH);
+    out.push(`<line x1="${left}" y1="${yVah}" x2="${W - right}" y2="${yVah}" stroke="${GOLD2}" stroke-width="1" stroke-dasharray="3 2"/>`);
+    out.push(`<line x1="${left}" y1="${yVal}" x2="${W - right}" y2="${yVal}" stroke="${GOLD2}" stroke-width="1" stroke-dasharray="3 2"/>`);
+    out.push(`<line x1="${left}" y1="${yPoc}" x2="${W - right}" y2="${yPoc}" stroke="${GOLDC}" stroke-width="1.5"/>`);
+    labs.push({ y: yVah - 2, t: `VAH ${px(bins[p.va[1]][0] + w)}`, c: GOLD2, b: false });
+    labs.push({ y: yPoc - 2, t: `POC ${px(bins[p.poc][0] + w / 2)}`, c: GOLD2, b: false });
+    labs.push({ y: yVal + 8, t: `VAL ${px(bins[p.va[0]][0])}`, c: GOLD2, b: false });
     // Nhãn giá: ≤ 10 nhãn
     const step = Math.max(1, Math.ceil(n / 10));
     for (let i = 0; i < n; i += step) out.push(`<text x="${left - 7}" y="${f1(yTop(i) + rowH / 2 + 3)}" font-size="8.5" fill="${MUTE}" text-anchor="end" font-family="Archivo,Arial">${px(bins[i][0])}</text>`);
@@ -350,8 +356,15 @@
     if (price != null && price >= p.base && price <= p.base + n * w) {
       const y = f1(yPrice(price));
       out.push(`<line x1="${left - 6}" y1="${y}" x2="${W - right}" y2="${y}" stroke="#3B2A6B" stroke-width="1.2" stroke-dasharray="3 2"/>`);
-      out.push(`<text x="${W - right}" y="${y - 2}" font-size="8" fill="#3B2A6B" text-anchor="end" font-family="Archivo,Arial" font-weight="700">giá ${px(price)}</text>`);
+      labs.push({ y: y - 2, t: `giá ${px(price)}`, c: "#3B2A6B", b: true });
     }
+    labs.sort((a, b) => a.y - b.y);
+    let last = -1e9;
+    labs.forEach((l) => {
+      const y = Math.max(l.y, last + 9);
+      last = y;
+      out.push(`<text x="${W - right}" y="${f1(y)}" font-size="8" fill="${l.c}" text-anchor="end" font-family="Archivo,Arial" stroke="#fff" stroke-width="2.5" paint-order="stroke"${l.b ? ' font-weight="700"' : ""}>${l.t}</text>`);
+    });
     out.push(`<text x="${left}" y="${H - 6}" font-size="8" fill="${MUTE}" font-family="Archivo,Arial">0</text>`);
     out.push(`<text x="${W - right}" y="${H - 6}" font-size="8" fill="${MUTE}" text-anchor="end" font-family="Archivo,Arial">${vol(vmax)} / ô ${px(w)}</text>`);
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Khối lượng theo mức giá">${out.join("")}</svg>`;
@@ -394,7 +407,7 @@
     }
     const st = Z.settings;
     $("z-why").innerHTML = `<h4>Cách đọc</h4>
-      <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — giá hay quay về đây. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động.</p>
+      <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — nơi phần lớn cổ phiếu đã đổi chủ; <b>VAH / VAL</b> là biên trên / biên dưới của dải. Đã đo 10 năm trên 39 mã: VAH/VAL không giữ hay cản giá tốt hơn một mức bất kỳ — chỉ dùng làm bản đồ. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động.</p>
       <p><b>Vùng mua nhiều</b> = các ô liền nhau có KL ≥ ${st.zone_vol_mult}× trung bình ô và ≥ ${Math.round(st.buy_share_min * 100)} % mua chủ động; <b>vùng bán nhiều</b> ≤ ${Math.round(st.sell_share_max * 100)} % mua. Vùng mua dưới giá hiện tại thường là chỗ có người đỡ; vùng bán trên giá là chỗ hàng chờ ra.</p>
       <p class="warn">Tick thật chỉ gom được mỗi ngày một phiên từ 18/09/2026; phần ước lượng từ nến 1' được thay dần. Chưa đo được vùng có giá trị dự báo hay không — đây là thống kê mô tả, không phải khuyến nghị.</p>`;
   }
