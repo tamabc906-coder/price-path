@@ -120,6 +120,54 @@ def build(sessions: list[tuple[str, dict, float]], settings: dict | None = None)
     return out
 
 
+def session_stats(day: str, sess: dict) -> dict:
+    """Một dòng thống kê mua/bán chủ động của MỘT phiên (giá thô, không cần hệ số).
+
+    Mỗi cổ phiếu khớp có đúng một bên chủ động và một bên bị động: mua bị động = bán chủ động và ngược lại,
+    nên hai cột mua/bán chủ động là đủ. Giá trị lệnh lớn = Σ KL × giá thô (tiền thật đã khớp), đơn vị tỷ đồng;
+    phiên ước lượng (est) không có lệnh lớn → None, không phải 0.
+    """
+    buy = sell = x = 0
+    big_buy_val = big_sell_val = 0.0
+    for k, arr in sess.get("levels", {}).items():
+        p = float(k)
+        buy += int(arr[BUY])
+        sell += int(arr[SELL])
+        x += int(arr[OTHER])
+        big_buy_val += int(arr[BIG_BUY]) * p
+        big_sell_val += int(arr[BIG_SELL]) * p
+    est = bool(sess.get("est", False))
+    out = {
+        "d": day, "est": est, "buy": buy, "sell": sell, "x": x, "total": buy + sell + x, "net": buy - sell,
+        "buy_share": round(buy / (buy + sell), 4) if buy + sell else None,
+        "big_buy_val": None, "big_sell_val": None, "big_net_val": None,
+        # Phiên thật mà cả phiên không tick nào có bên chủ động: nguồn không ghi `side` cho mã này
+        # (DGC 09/2026: 0/667 tick có side) — không phải "mua = bán".
+        "no_side": (not est) and buy + sell == 0 and x > 0,
+    }
+    if not est and buy + sell > 0:
+        # nghìn đồng × cp = nghìn đồng → tỷ đồng: / 1e6
+        out["big_buy_val"] = round(big_buy_val / 1e6, 2)
+        out["big_sell_val"] = round(big_sell_val / 1e6, 2)
+        out["big_net_val"] = round((big_buy_val - big_sell_val) / 1e6, 2)
+    return out
+
+
+def sum_stats(rows: list[dict]) -> dict:
+    """Cộng các dòng session_stats (một khung phiên). Lệnh lớn chỉ cộng phiên tick thật."""
+    buy = sum(r["buy"] for r in rows)
+    sell = sum(r["sell"] for r in rows)
+    real = [r for r in rows if r["big_net_val"] is not None]
+    return {
+        "n": len(rows), "n_real": len(real),
+        "buy": buy, "sell": sell, "x": sum(r["x"] for r in rows), "net": buy - sell,
+        "buy_share": round(buy / (buy + sell), 4) if buy + sell else None,
+        "big_buy_val": round(sum(r["big_buy_val"] for r in real), 2) if real else None,
+        "big_sell_val": round(sum(r["big_sell_val"] for r in real), 2) if real else None,
+        "big_net_val": round(sum(r["big_net_val"] for r in real), 2) if real else None,
+    }
+
+
 def value_area(totals: list[int], poc: int, pct: float) -> tuple[int, int]:
     """(ô thấp, ô cao) bao ≥ pct tổng KL, mở rộng từ POC về phía ô kề có KL lớn hơn."""
     grand = sum(totals)

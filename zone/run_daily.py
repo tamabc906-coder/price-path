@@ -66,16 +66,37 @@ def build_symbol(st: dict, closes: dict[str, float], cfg: dict) -> dict:
         price_date = max(closes)
         price = closes[price_date]
     out = {"price": price, "price_date": price_date, "profiles": {}}
+    # Thống kê mua/bán chủ động theo phiên (giá thô): tối đa khung lớn nhất, cũ → mới
+    n_max = max(int(w) for w in cfg["windows"])
+    daily = [profile.session_stats(d, s) for d, s in store.recent(st, n_max)]
+    out["daily"] = daily
     for w in cfg["windows"]:
         rows = [(d, s, profile.adjust_factor(s, closes.get(d))) for d, s in store.recent(st, int(w))]
         p = profile.build(rows, cfg)
         if p is not None:
             p["factors"] = sum(1 for _, _, f in rows if f != 1.0)
+            p["flow"] = profile.sum_stats(daily[-int(w):])
             out["profiles"][str(w)] = profile.with_distance(p, price)
     return out
 
 
-def run(force: bool = False, dry_run: bool = False, only: list[str] | None = None) -> int:
+def market_row(daily: list[dict]) -> dict | None:
+    """Một dòng bảng Toàn danh mục: phiên gần nhất + 5 phiên gần nhất."""
+    if not daily:
+        return None
+    last = daily[-1]
+    tot = last["buy"] + last["sell"]
+    return {
+        "d": last["d"], "est": last["est"], "no_side": last.get("no_side", False),
+        "buy_share": last["buy_share"], "net": last["net"],
+        "net_pct": round(last["net"] / tot, 4) if tot else None,
+        "big_net_val": last["big_net_val"],
+        "w5": profile.sum_stats(daily[-5:]),
+    }
+
+
+def run(force: bool = False, dry_run: bool = False, only: list[str] | None = None,
+        rebuild: bool = False) -> int:
     now = datetime.now(TZ)
     cfg = settings()
     items, src = watchlist.load()
@@ -88,7 +109,7 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
     collected, skipped, failed, warnings = [], [], [], []
 
     with VndirectClient() as vc, dnse.DnseClient() as dc:
-        for it in items:
+        for it in ([] if rebuild else items):
             sym = it["symbol"]
             st = store.load(sym)
             if not st["sessions"]:
@@ -121,7 +142,7 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
             else:
                 skipped.append(sym)
 
-    if not collected and not force:
+    if not collected and not force and not rebuild:
         # Kho đã có phiên mới hơn bản đã publish thì vẫn phải dựng lại: một lượt trước đó có thể đã ghi
         # data/zone/*.json rồi chết trước khi ghi latest.json, và vì has_real() đã True nên mọi lượt sau
         # đều "bỏ qua" hết — latest.json sẽ đứng mãi ở phiên cũ.
@@ -147,12 +168,14 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
         data["real_sessions"] = sum(1 for s in st["sessions"].values() if not s.get("est", False))
         symbols[sym] = data
         trade_date = max(trade_date, data["last_session"])
+    market = {sym: r for sym, d in symbols.items() if (r := market_row(d.get("daily") or []))}
     latest = {
         "updated_at": now.isoformat(timespec="seconds"),
         "trade_date": trade_date,
         "settings": cfg,
         "unit": "nghìn đồng, thang giá điều chỉnh hiện hành (theo kho nến DNSE)",
         "symbols": symbols,
+        "market": market,
     }
     if dry_run:
         for sym, d in symbols.items():
@@ -161,7 +184,8 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
                   f"mua {len(p.get('buy_zones', []))} vùng  bán {len(p.get('sell_zones', []))} vùng")
         return 0
     _dump(LATEST, latest)
-    _dump(STATE, _state(now, src, collected, skipped, failed, warnings, wrote=True))
+    if not rebuild:     # dựng lại từ kho không gom gì — giữ nguyên nhật ký lượt gom thật gần nhất
+        _dump(STATE, _state(now, src, collected, skipped, failed, warnings, wrote=True))
     log.info("Ghi %s: %d mã, phiên %s; mới %d, bỏ qua %d, lỗi %d", LATEST.name, len(symbols), trade_date,
              len(collected), len(skipped), len(failed))
     return 0 if not failed else 1
@@ -183,8 +207,10 @@ def main() -> None:
     ap.add_argument("symbols", nargs="*", help="chỉ chạy các mã này (mặc định cả danh mục)")
     ap.add_argument("--force", action="store_true", help="gọi nguồn lại dù đã có phiên thật hôm nay, ghi đè")
     ap.add_argument("--dry-run", action="store_true", help="không ghi kho/latest, chỉ in tóm tắt")
+    ap.add_argument("--rebuild", action="store_true", help="không gọi nguồn tick, chỉ dựng lại latest.json từ kho")
     a = ap.parse_args()
-    sys.exit(run(force=a.force, dry_run=a.dry_run, only=[s.upper() for s in a.symbols] or None))
+    sys.exit(run(force=a.force, dry_run=a.dry_run, only=[s.upper() for s in a.symbols] or None,
+                 rebuild=a.rebuild))
 
 
 if __name__ == "__main__":

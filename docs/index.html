@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -89,6 +89,20 @@
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Vùng giá</div></div><span class="kicker" id="zoneKicker">—</span></div>
       <div class="sub">Khớp lệnh 2 tháng gộp theo mức giá: mua nhiều ở đâu, bán nhiều ở đâu</div>
     </div>
+    <div class="sort" id="z-mode">
+      <button type="button" data-mode="sym" aria-pressed="true">Theo mã</button>
+      <button type="button" data-mode="mkt" aria-pressed="false">Toàn danh mục</button>
+    </div>
+    <div id="z-mktview" hidden>
+      <div class="sort" id="z-msort">
+        <span class="k">Xếp theo</span>
+        <button type="button" data-ms="buy" aria-pressed="true">Mua mạnh nhất</button>
+        <button type="button" data-ms="sell" aria-pressed="false">Bán mạnh nhất</button>
+        <button type="button" data-ms="big" aria-pressed="false">Ròng lệnh lớn</button>
+      </div>
+      <div class="tbl scroll" id="z-mkt"></div>
+    </div>
+    <div id="z-symview">
     <div class="ctrl">
       <label for="z-sym">Mã</label>
       <select id="z-sym"></select>
@@ -104,10 +118,12 @@
     <div class="strip" id="z-strip">Đang tải…</div>
     <div class="cone big zone" id="z-prof"></div>
     <div class="legend"><span><i class="zb"></i>mua chủ động</span><span><i class="zs"></i>bán chủ động</span><span><i class="zx"></i>ATO/ATC</span><span><i class="zpoc"></i>POC</span><span><i class="zva"></i>Value Area 70 % (VAL–VAH)</span><span><i class="zpx"></i>giá hiện tại</span></div>
+    <div class="tbl flow" id="z-flow"></div>
     <div class="tog"><div class="t"><b>Chỉ lệnh lớn (cá mập)</b><span id="z-big-note">Lệnh ≥ 500 triệu đ · chỉ có ở phiên tick thật</span></div><button type="button" class="tg off" id="z-big" aria-label="Chỉ lệnh lớn"></button></div>
     <div class="tbl" id="z-buy"></div>
     <div class="tbl" id="z-sell"></div>
     <div class="box" id="z-why"></div>
+    </div>
   </section>
 
   <section class="panel" id="p-settings" role="tabpanel">
@@ -140,6 +156,6 @@
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

@@ -202,3 +202,60 @@ def test_value_area_expands_toward_bigger_neighbor():
 def test_bin_width_respects_max_bins():
     assert profile.bin_width(20.0, 21.0, 60) == 0.05
     assert profile.bin_width(60.0, 80.0, 60) == 0.4     # 200 bước / 60 → bội 4 của 0,1
+
+
+# ---- thống kê mua/bán chủ động theo phiên ------------------------------------------------------------
+
+def _sess(levels, est=False):
+    return {"est": est, "close": 65.0, "total": 0, "levels": levels}
+
+
+def test_session_stats_sums_sides_and_big_value_in_billion():
+    s = _sess({"64.7": [79300, 157800, 180300, 22100, 78000], "65": [166000, 682900, 0, 50000, 521200]})
+    r = profile.session_stats("2026-09-25", s)
+    assert (r["buy"], r["sell"], r["x"]) == (245300, 840700, 180300)
+    assert r["total"] == 245300 + 840700 + 180300
+    assert r["net"] == 245300 - 840700
+    assert abs(r["buy_share"] - 245300 / (245300 + 840700)) < 1e-4
+    # 22.100 cp × 64,7 + 50.000 × 65 = 4.679,87 triệu đ nghìn → 4,68 tỷ
+    assert r["big_buy_val"] == round((22100 * 64.7 + 50000 * 65) / 1e6, 2)
+    assert r["big_net_val"] == round((22100 * 64.7 + 50000 * 65 - 78000 * 64.7 - 521200 * 65) / 1e6, 2)
+
+
+def test_session_stats_estimated_has_no_big_lots():
+    r = profile.session_stats("2026-08-01", _sess({"65": [1000, 500, 0, 0, 0]}, est=True))
+    assert r["est"] is True and r["big_buy_val"] is None and r["big_net_val"] is None
+    assert r["buy_share"] == round(1000 / 1500, 4)
+
+
+def test_sum_stats_counts_big_lots_only_on_real_sessions():
+    rows = [profile.session_stats("d1", _sess({"10": [100, 300, 0, 0, 0]}, est=True)),
+            profile.session_stats("d2", _sess({"10": [500, 100, 50, 200, 0]}))]
+    t = profile.sum_stats(rows)
+    assert (t["n"], t["n_real"], t["buy"], t["sell"], t["net"]) == (2, 1, 600, 400, 200)
+    assert t["big_net_val"] == round(200 * 10 / 1e6, 2)
+    assert profile.sum_stats([rows[0]])["big_net_val"] is None
+
+
+def test_build_symbol_daily_and_market_row():
+    from zone import run_daily
+    st = {"sessions": {
+        "2026-09-23": _sess({"65": [100, 300, 10, 0, 0]}),
+        "2026-09-24": _sess({"65": [400, 100, 10, 0, 0]}),
+        "2026-09-25": _sess({"65": [200, 800, 10, 0, 100]}),
+    }}
+    cfg = dict(profile.DEFAULT_SETTINGS, windows=[2, 3])
+    out = run_daily.build_symbol(st, {"2026-09-25": 65.0}, cfg)
+    assert [r["d"] for r in out["daily"]] == ["2026-09-23", "2026-09-24", "2026-09-25"]   # cũ → mới
+    assert out["profiles"]["2"]["flow"]["net"] == (400 - 100) + (200 - 800)
+    m = run_daily.market_row(out["daily"])
+    assert m["d"] == "2026-09-25" and m["net"] == -600 and m["net_pct"] == -0.6
+    assert m["big_net_val"] == round(-100 * 65 / 1e6, 2)
+    assert m["w5"]["n"] == 3 and m["w5"]["net"] == (100 - 300) + (400 - 100) + (200 - 800)
+    assert run_daily.market_row([]) is None
+
+
+def test_session_stats_flags_source_without_side():
+    r = profile.session_stats("2026-09-25", _sess({"35.25": [0, 0, 18200, 0, 0]}))
+    assert r["no_side"] is True and r["buy_share"] is None and r["big_net_val"] is None
+    assert profile.session_stats("d", _sess({"10": [1, 0, 5, 0, 0]}))["no_side"] is False

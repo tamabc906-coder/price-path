@@ -382,8 +382,102 @@
       <table><thead><tr><th>Vùng giá</th><th>KL</th><th>% mua</th><th>Cách giá</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
+
+  // ---- Mua/bán chủ động theo phiên (latest.symbols[m].daily, profiles[w].flow, latest.market) ----
+  let zmode = "sym", zmsort = "buy";
+  const sgn = (v) => (v > 0 ? "+" : v < 0 ? "−" : "");
+  const svol = (v) => (v == null ? "—" : sgn(v) + vol(Math.abs(v)));
+  const bil = (v) => (v == null ? "—" : Number(v).toFixed(v >= 100 ? 0 : 1));
+  const sbil = (v) => (v == null ? "—" : sgn(v) + Math.abs(v).toFixed(Math.abs(v) >= 100 ? 0 : 1));
+  const cls = (v) => (v > 0 ? "up" : v < 0 ? "down" : "");
+
+  // Cột = ròng (mua CĐ − bán CĐ) mỗi phiên; đường vàng = ròng cộng dồn trên thang riêng.
+  function flowChart(rows, W) {
+    const n = rows.length, H = 128, top = 10, bot = 18, left = 8, right = 8;
+    const plotW = W - left - right, mid = top + (H - top - bot) / 2, half = (H - top - bot) / 2;
+    const m = Math.max(1, ...rows.map((r) => Math.abs(r.net)));
+    let c = 0;
+    const cum = rows.map((r) => (c += r.net));
+    const cm = Math.max(1, ...cum.map((v) => Math.abs(v)));
+    const bw = plotW / n, f1 = (v) => Math.round(v * 10) / 10;
+    const out = [`<rect width="${W}" height="${H}" fill="#fff"/>`,
+      `<line x1="${left}" y1="${mid}" x2="${W - right}" y2="${mid}" stroke="${LINE}" stroke-width="1"/>`];
+    rows.forEach((r, i) => {
+      const h = (Math.abs(r.net) / m) * half, x = left + i * bw + bw * 0.15;
+      const y = r.net >= 0 ? mid - h : mid;
+      out.push(`<rect x="${f1(x)}" y="${f1(y)}" width="${f1(Math.max(1, bw * 0.7))}" height="${f1(Math.max(0.6, h))}" fill="${r.net >= 0 ? UP : DOWN}" fill-opacity="${r.est ? 0.35 : 0.9}"/>`);
+    });
+    const pts = cum.map((v, i) => `${f1(left + i * bw + bw / 2)},${f1(mid - (v / cm) * half)}`).join(" ");
+    out.push(`<polyline points="${pts}" fill="none" stroke="${GOLDC}" stroke-width="1.6"/>`);
+    out.push(`<text x="${left}" y="${H - 5}" font-size="8.5" fill="${MUTE}" font-family="Archivo,Arial">${dmy(rows[0].d)}</text>`);
+    out.push(`<text x="${W - right}" y="${H - 5}" font-size="8.5" fill="${MUTE}" text-anchor="end" font-family="Archivo,Arial">${dmy(rows[n - 1].d)}</text>`);
+    out.push(`<text x="${W - right}" y="${top + 1}" font-size="8.5" fill="${GOLD2}" text-anchor="end" font-family="Archivo,Arial" stroke="#fff" stroke-width="2.5" paint-order="stroke">cộng dồn ${svol(cum[n - 1])}</text>`);
+    return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ròng mua bán chủ động theo phiên">${out.join("")}</svg>`;
+  }
+
+  function renderFlow(s, p) {
+    const el = $("z-flow");
+    const all = s.daily || [];
+    const rows = all.slice(-p.n);
+    if (!rows.length) { el.innerHTML = ""; return; }
+    const t = p.flow || {};
+    const body = rows.slice().reverse().map((r) => `<tr><td>${dmy(r.d)}${r.est ? '<span class="est">ước lượng</span>' : ""}${r.no_side ? '<span class="est">không có bên CĐ</span>' : ""}</td>` +
+      `<td>${vol(r.buy)}</td><td>${vol(r.sell)}</td><td class="share ${r.buy_share >= 0.5 ? "up" : "down"}"><b>${pct(r.buy_share)}</b></td>` +
+      `<td class="${cls(r.net)}">${svol(r.net)}</td><td>${vol(r.x)}</td>` +
+      `<td>${bil(r.big_buy_val)}</td><td>${bil(r.big_sell_val)}</td><td class="${cls(r.big_net_val)}">${sbil(r.big_net_val)}</td></tr>`).join("");
+    const foot = `<tr class="sum"><td>Tổng ${t.n || rows.length} phiên</td><td>${vol(t.buy)}</td><td>${vol(t.sell)}</td>` +
+      `<td class="share ${t.buy_share >= 0.5 ? "up" : "down"}"><b>${pct(t.buy_share)}</b></td><td class="${cls(t.net)}">${svol(t.net)}</td><td>${vol(t.x)}</td>` +
+      `<td>${bil(t.big_buy_val)}</td><td>${bil(t.big_sell_val)}</td><td class="${cls(t.big_net_val)}">${sbil(t.big_net_val)}</td></tr>`;
+    el.innerHTML = `<h4>Mua / bán chủ động theo phiên <span class="n">— ${rows.length} phiên, cột = mua CĐ − bán CĐ</span></h4>
+      <div class="fchart">${flowChart(rows, 342)}</div>
+      <div class="scroll"><table class="wide"><thead><tr><th>Phiên</th><th>Mua CĐ</th><th>Bán CĐ</th><th>% mua</th><th>Ròng</th><th>ATO/ATC</th><th>Mua lớn</th><th>Bán lớn</th><th>Ròng lớn</th></tr></thead>
+      <tbody>${body}${foot}</tbody></table></div>
+      <div class="note">KL đơn vị cổ phiếu; cột lệnh lớn (≥ ${Math.round((Z.settings.big_lot_value_vnd || 5e8) / 1e6)} triệu đ/lệnh) đơn vị <b>tỷ đồng</b>, chỉ có ở phiên tick thật (${t.n_real || 0}/${t.n || rows.length} phiên). Mua bị động = bán chủ động và ngược lại, nên hai cột mua/bán chủ động là đủ. Phiên "ước lượng" dựng từ nến 1 phút, mua/bán chỉ đoán theo hướng nến, tô nhạt.${rows.some((r) => r.no_side) ? " Phiên \"không có bên CĐ\": VNDirect không ghi bên chủ động cho mã này, cả phiên nằm ở cột ATO/ATC — không tính được mua/bán." : ""}</div>`;
+  }
+
+  function renderMarket() {
+    const el = $("z-mkt");
+    const M = (Z && Z.market) || {};
+    const list = Object.entries(M).map(([k, r]) => ({ k, r, w: r.w5 || {} }));
+    list.sort((a, b) => zmsort === "big" ? (b.r.big_net_val ?? -1e9) - (a.r.big_net_val ?? -1e9)
+      : zmsort === "sell" ? (a.r.net_pct ?? 9) - (b.r.net_pct ?? 9) : (b.r.net_pct ?? -9) - (a.r.net_pct ?? -9));
+    document.querySelectorAll("#z-msort button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.ms === zmsort ? "true" : "false"));
+    if (!list.length) { el.innerHTML = `<h4>Toàn danh mục <span class="n">— chưa có dữ liệu</span></h4>`; return; }
+    const w5pct = (w) => (w.buy + w.sell ? w.net / (w.buy + w.sell) : null);
+    const rows = list.map(({ k, r, w }) => `<tr data-zsym="${esc(k)}"><td>${esc(k)}${r.est ? '<span class="est">ước lượng</span>' : ""}${r.no_side ? '<span class="est">nguồn không ghi bên CĐ</span>' : ""}</td>` +
+      `<td class="share ${r.buy_share >= 0.5 ? "up" : "down"}"><b>${pct(r.buy_share)}</b></td>` +
+      `<td class="${cls(r.net_pct)}">${r.net_pct == null ? "—" : sgn(r.net_pct) + Math.abs(Math.round(r.net_pct * 100)) + " %"}</td>` +
+      `<td class="${cls(r.big_net_val)}">${sbil(r.big_net_val)}</td>` +
+      `<td class="${cls(w.net)}">${w5pct(w) == null ? "—" : sgn(w.net) + Math.abs(Math.round(w5pct(w) * 100)) + " %"}</td>` +
+      `<td class="${cls(w.big_net_val)}">${sbil(w.big_net_val)}</td></tr>`).join("");
+    el.innerHTML = `<h4>Toàn danh mục — phiên ${dmy(Z.trade_date)} <span class="n">— bấm một mã để xem chi tiết</span></h4>
+      <table class="wide mkt"><thead><tr><th>Mã</th><th>% mua</th><th>Ròng</th><th>Ròng lớn</th><th>Ròng 5p</th><th>Lớn 5p</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="note"><b>% mua</b> = mua chủ động / (mua + bán chủ động). <b>Ròng</b> = (mua − bán chủ động) / (mua + bán chủ động). <b>Ròng lớn</b> = giá trị lệnh ≥ ${Math.round((Z.settings.big_lot_value_vnd || 5e8) / 1e6)} triệu đ mua chủ động trừ bán chủ động, <b>tỷ đồng</b>. Cột 5p cộng 5 phiên gần nhất. Thống kê mô tả — đã đo 23/09: KL × thân nến không cho biết hướng giá phiên sau.</div>`;
+  }
+
+  function showZoneMode() {
+    document.querySelectorAll("#z-mode button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === zmode ? "true" : "false"));
+    $("z-mktview").hidden = zmode !== "mkt";
+    $("z-symview").hidden = zmode !== "sym";
+  }
+  $("z-mode").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-mode]"); if (!b) return;
+    zmode = b.dataset.mode; renderZone();
+  });
+  $("z-msort").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-ms]"); if (!b) return;
+    zmsort = b.dataset.ms; renderMarket();
+  });
+  $("z-mkt").addEventListener("click", (ev) => {
+    const tr = ev.target.closest("tr[data-zsym]"); if (!tr) return;
+    zcur = tr.dataset.zsym; $("z-sym").value = zcur; zmode = "sym"; renderZone();
+    window.scrollTo(0, 0);
+  });
+
   async function renderZone() {
     if (!Z) await loadZone();
+    showZoneMode();
+    if (zmode === "mkt") { $("zoneKicker").textContent = Z ? `phiên ${dmy(Z.trade_date)}` : "—"; renderMarket(); return; }
     const s = zsym();
     if (!s) return;
     const p = s.profiles[zwin] || s.profiles["40"];
@@ -398,6 +492,7 @@
     $("z-strip").className = "strip" + (p.n_real < p.n / 2 ? " pending" : "");
     $("z-strip").innerHTML = `<b>${p.n_real}/${p.n} phiên là tick thật</b> (${dmy(p.from)} → ${dmy(p.to)})${estN ? `; ${estN} phiên còn lại dựng từ nến 1 phút — KL theo giá đúng, <b>mua/bán chỉ ước lượng</b> theo hướng nến, tô nhạt` : ""}${fac}. Mua ${pct(p.buy / (p.buy + p.sell || 1))} · ATO/ATC ${pct(p.x / (p.total || 1))} · tổng KL ${vol(p.total)}.`;
     $("z-prof").innerHTML = profileChart(p, s.price, 358, zbig);
+    renderFlow(s, p);
     if (zbig) {
       zoneTable("z-buy", "Cá mập mua nhiều", p.big_buy_zones, "up");
       zoneTable("z-sell", "Cá mập bán nhiều", p.big_sell_zones, "down");
@@ -407,7 +502,7 @@
     }
     const st = Z.settings;
     $("z-why").innerHTML = `<h4>Cách đọc</h4>
-      <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — nơi phần lớn cổ phiếu đã đổi chủ; <b>VAH / VAL</b> là biên trên / biên dưới của dải. Đã đo 10 năm trên 39 mã: VAH/VAL không giữ hay cản giá tốt hơn một mức bất kỳ — chỉ dùng làm bản đồ. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động.</p>
+      <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — nơi phần lớn cổ phiếu đã đổi chủ; <b>VAH / VAL</b> là biên trên / biên dưới của dải. Đã đo 10 năm trên 39 mã: VAH/VAL không giữ hay cản giá tốt hơn một mức bất kỳ — chỉ dùng làm bản đồ. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động. Mỗi cổ phiếu khớp có một bên chủ động và một bên bị động, nên <b>mua bị động = bán chủ động</b>.</p>
       <p><b>Vùng mua nhiều</b> = các ô liền nhau có KL ≥ ${st.zone_vol_mult}× trung bình ô và ≥ ${Math.round(st.buy_share_min * 100)} % mua chủ động; <b>vùng bán nhiều</b> ≤ ${Math.round(st.sell_share_max * 100)} % mua. Vùng mua dưới giá hiện tại thường là chỗ có người đỡ; vùng bán trên giá là chỗ hàng chờ ra.</p>
       <p class="warn">Tick thật chỉ gom được mỗi ngày một phiên từ 18/09/2026; phần ước lượng từ nến 1' được thay dần. Chưa đo được vùng có giá trị dự báo hay không — đây là thống kê mô tả, không phải khuyến nghị.</p>`;
   }
