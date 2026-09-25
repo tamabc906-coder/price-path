@@ -474,10 +474,188 @@
       <div class="note"><b>% mua</b> = mua chủ động / (mua + bán chủ động). <b>Ròng</b> = (mua − bán chủ động) / (mua + bán chủ động). <b>Ròng lớn</b> = giá trị lệnh ≥ ${Math.round((Z.settings.big_lot_value_vnd || 5e8) / 1e6)} triệu đ mua chủ động trừ bán chủ động, <b>tỷ đồng</b>. Cột 5p cộng 5 phiên gần nhất. Thống kê mô tả — đã đo 23/09: KL × thân nến không cho biết hướng giá phiên sau.</div>`;
   }
 
+  // ---- Dòng tiền chủ động (từ bản mẫu flow-view-lab, 25/09/2026) ----
+  // Ghép hướng giá (daily.c / daily.pc, giá điều chỉnh) với bên chủ động (buy/sell) của từng phiên.
+  // Nguồn: latest.symbols[m].daily (40 phiên) và .fp (nến dòng tiền 12 phiên, zone/profile.footprint).
+  const FV_BRAND = "#3B2A6B", FV_FLOW_T = 0.05, FV_PX_T = 0.015, FV_PX_FLAT = 0.003;
+  const FV_FORCE = {
+    up: { i: "▲", t: "Mua đẩy lên", c: UP, d: "Phần lớn các phiên giá tăng và mua chủ động áp đảo: tiền trả giá cao để có hàng." },
+    down: { i: "▼", t: "Bán đạp xuống", c: DOWN, d: "Phần lớn các phiên giá giảm và bán chủ động áp đảo: người bán chấp nhận giá thấp để thoát." },
+    prop: { i: "⤒", t: "Có người đỡ", c: "#2E6B5E", d: "Phần lớn các phiên giá giảm hoặc đứng nhưng mua chủ động áp đảo: có bên hấp thụ hàng bán." },
+    dist: { i: "⤓", t: "Lên nhưng hàng ra", c: "#9A5A2E", d: "Phần lớn các phiên giá tăng hoặc đứng nhưng bán chủ động áp đảo: có bên tranh thủ thoát hàng." },
+    bal: { i: "⇆", t: "Giằng co", c: "#6B6A7A", d: "Phần lớn các phiên mua và bán chủ động gần cân bằng." },
+    none: { i: "·", t: "Không có bên CĐ", c: "#A09E98", d: "Nguồn không ghi bên chủ động cho mã này." },
+  };
+  let fwin = 10;
+  try { fwin = +localStorage.getItem("pp_fwin") || 10; } catch (_) {}
+  if (![10, 20, 40].includes(fwin)) fwin = 10;
+  const fvF1 = (v) => Math.round(v * 10) / 10;
+  const fvPc = (v, d = 0) => (v == null || !isFinite(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(d)} %`);
+  const fvBil = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(Math.abs(v) >= 100 ? 0 : 1)} tỷ`;
+  const fvChg = (r) => (r.c && r.pc ? r.c / r.pc - 1 : null);
+  function fvMix(hex, t) {   // trắng → màu theo cường độ 0..1
+    const n = parseInt(hex.slice(1), 16), m = (c) => Math.round(255 + (c - 255) * t);
+    return `rgb(${m(n >> 16)},${m((n >> 8) & 255)},${m(n & 255)})`;
+  }
+  const fvTxt = (x, y, t, o = {}) => `<text x="${fvF1(x)}" y="${fvF1(y)}" font-size="${o.s || 9}" fill="${o.c || MUTE}" text-anchor="${o.a || "start"}" font-family="Archivo,Arial"${o.w ? ` font-weight="${o.w}"` : ""}${o.halo ? ' stroke="#fff" stroke-width="2.5" paint-order="stroke"' : ""}>${t}</text>`;
+
+  function fvForce(r) {
+    const tot = r.buy + r.sell;
+    if (r.no_side || !tot) return "none";
+    const flow = (r.buy - r.sell) / tot, chg = fvChg(r) || 0;
+    if (Math.abs(flow) < FV_FLOW_T) return "bal";
+    if (flow > 0) return chg > FV_PX_FLAT ? "up" : "prop";
+    return chg < -FV_PX_FLAT ? "down" : "dist";
+  }
+  function fvStats(rows) {
+    const buy = rows.reduce((a, r) => a + r.buy, 0), sell = rows.reduce((a, r) => a + r.sell, 0);
+    const base = rows[0] && (rows[0].pc || rows[0].c), last = rows[rows.length - 1];
+    const big = rows.filter((r) => r.big_net_val != null);
+    return {
+      n: rows.length, flow: buy + sell ? (buy - sell) / (buy + sell) : null,
+      chg: base && last && last.c ? last.c / base - 1 : null,
+      bigN: big.length, bigNet: big.length ? big.reduce((a, r) => a + r.big_net_val, 0) : null,
+      est: rows.filter((r) => r.est).length, noSide: rows.every((r) => r.no_side),
+    };
+  }
+  function fvClassify(st) {
+    if (st.noSide || st.flow == null) return FV_FORCE.none;
+    const up = st.chg >= FV_PX_T, dn = st.chg <= -FV_PX_T;
+    if (st.flow >= FV_FLOW_T) {
+      if (up) return { t: "Mua đuổi đẩy giá lên", c: UP, d: "Bên mua sẵn sàng trả giá cao để có hàng, và giá đi lên theo — dòng tiền đang xác nhận nhịp tăng." };
+      if (dn) return { t: "Giá giảm nhưng có người đỡ", c: "#2E6B5E", d: "Giá đi xuống trong khi mua chủ động vẫn áp đảo: có bên đang hấp thụ lượng bán ra." };
+      return { t: "Tiền vào, giá chưa chạy", c: "#2E6B5E", d: "Mua chủ động áp đảo nhưng giá gần như đứng yên — lượng bán treo sẵn vẫn đủ đỡ." };
+    }
+    if (st.flow <= -FV_FLOW_T) {
+      if (dn) return { t: "Bán chủ động kéo giá xuống", c: DOWN, d: "Bên bán chấp nhận giá thấp để thoát nhanh và giá giảm theo — dòng tiền đang rút." };
+      if (up) return { t: "Giá tăng nhưng hàng ra", c: "#9A5A2E", d: "Giá đi lên nhưng bán chủ động lại áp đảo: có bên tranh thủ nhịp tăng để thoát hàng." };
+      return { t: "Hàng ra đều, giá chưa phản ứng", c: "#9A5A2E", d: "Bán chủ động áp đảo nhưng giá chưa giảm — lệnh mua treo sẵn đang đỡ. Nếu lực đỡ này hết, giá dễ trượt." };
+    }
+    return FV_FORCE.bal;
+  }
+
+  function fvVerdict(s) {
+    const rows = (s.daily || []).slice(-fwin), st = fvStats(rows), c = fvClassify(st);
+    const cnt = {};
+    rows.forEach((r) => { const k = fvForce(r); cnt[k] = (cnt[k] || 0) + 1; });
+    const ranked = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
+    const tally = ranked.map(([k, n]) => `${n} ${FV_FORCE[k].i} ${FV_FORCE[k].t[0].toLowerCase() + FV_FORCE[k].t.slice(1)}`).join(" · ");
+    // Tiêu đề = kiểu lực chiếm ≥ 50 % số phiên của khung; không có thì xét tổng cả khung
+    // Quá nửa số phiên nguồn không ghi bên chủ động (DGC 09/2026) → không kết luận từ phần còn lại
+    const [topK, topN] = ranked[0] || ["none", 0];
+    const head = (cnt.none || 0) * 2 >= st.n ? FV_FORCE.none : topN * 2 >= st.n && topK !== "none" ? { t: `${FV_FORCE[topK].i} ${FV_FORCE[topK].t}`, c: FV_FORCE[topK].c, d: FV_FORCE[topK].d } : c;
+    const chips = [`Giá ${st.n} phiên ${fvPc(st.chg, 1)}`];
+    if (st.flow != null && head !== FV_FORCE.none) chips.push(`Mua CĐ ${Math.round((st.flow + 1) / 2 * 100)} % · bán ${Math.round((1 - st.flow) / 2 * 100)} %`);
+    if (st.bigNet != null) chips.push(`Cá mập ${fvBil(st.bigNet)} (${st.bigN} phiên tick thật)`);
+    const el = $("f-verdict");
+    el.style.background = head.c;
+    el.innerHTML = `<div class="k">${esc(zcur)} · ${st.n} phiên gần nhất${st.est ? ` · ${st.est} phiên ước lượng` : ""}</div><div class="t">${head.t}</div><div class="d"><b>${tally}</b></div><div class="d">${head.d}</div><div class="chips">${chips.map((t) => `<span>${t}</span>`).join("")}</div>`;
+  }
+
+  function fvForceLog(s) {
+    const rows = (s.daily || []).slice(-20);
+    if (!rows.length) { $("f-force").innerHTML = ""; return; }
+    const strip = rows.map((r) => { const f = FV_FORCE[fvForce(r)]; return `<span class="${r.est ? "fe" : ""}" style="background:${f.c}" title="${dmy(r.d)} · ${f.t}">${f.i}</span>`; }).join("");
+    const list = rows.slice(-10).reverse().map((r) => {
+      const f = FV_FORCE[fvForce(r)], tot = r.buy + r.sell, b = tot ? r.buy / tot : 0.5, chg = fvChg(r);
+      return `<div class="fv-row${r.est ? " fe" : ""}"><div class="dt">${dmy(r.d)}${r.est ? "<small>ước lượng</small>" : ""}</div>
+        <div><div class="lb" style="color:${f.c}">${f.i} ${f.t}</div>
+        <div class="fv-bar">${tot ? `<i style="width:${(b * 100).toFixed(1)}%"></i><i></i>` : ""}</div>
+        <div class="fs">${tot ? `mua ${Math.round(b * 100)} % · bán ${Math.round((1 - b) * 100)} %` : "nguồn không ghi bên chủ động"}${r.big_net_val != null ? ` · cá mập ${fvBil(r.big_net_val)}` : ""}</div></div>
+        <div class="ch ${chg > 0 ? "up" : chg < 0 ? "down" : ""}">${fvPc(chg, 1)}</div></div>`;
+    }).join("");
+    $("f-force").innerHTML = `<div class="fv-strip">${strip}</div><div class="fv-ends"><span>${dmy(rows[0].d)}</span><span>20 phiên</span><span>${dmy(rows[rows.length - 1].d)}</span></div>${list}`;
+  }
+
+  // Nến dòng tiền: fp = [[ngày, est, O, H, L, C, [[giá, mua, bán, x, mua lớn, bán lớn], …]], …]
+  function fvFootprint(s) {
+    const fp = (s.fp || []).filter((x) => x[6].length);
+    if (!fp.length) { $("f-fp").innerHTML = `<div class="empty">Chưa có dữ liệu.</div>`; return; }
+    const W = 340, L = 34, R = 4, T = 8, PH = 300, H = T + PH + 30, n = fp.length, cw = (W - L - R) / n;
+    const lo = Math.min(...fp.map((x) => Math.min(x[4], ...x[6].map((l) => l[0]))));
+    const hi = Math.max(...fp.map((x) => Math.max(x[3], ...x[6].map((l) => l[0]))));
+    const pad = (hi - lo) * 0.03 || 0.1, y0 = lo - pad, y1 = hi + pad, Y = (v) => T + (y1 - v) / (y1 - y0) * PH;
+    const diffs = [];   // bước giá hay gặp → độ dày vạch
+    fp.forEach((x) => x[6].forEach((l, i) => { if (i) diffs.push(+(l[0] - x[6][i - 1][0]).toFixed(3)); }));
+    diffs.sort((a, b) => a - b);
+    const step = diffs.length ? diffs[Math.floor(diffs.length * 0.25)] || diffs[0] : 0.1;
+    const rh = Math.max(1.6, Math.min(9, (step / (y1 - y0)) * PH * 0.85));
+    const o = [`<rect width="${W}" height="${H}" fill="#fff"/>`];
+    for (let k = 0; k <= 5; k++) { const v = y0 + (y1 - y0) * k / 5, y = fvF1(Y(v)); o.push(`<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#F0ECE2"/>`, fvTxt(L - 4, +y + 3, px(v), { a: "end", s: 8 })); }
+    const byDay = {};
+    (s.daily || []).forEach((r) => { byDay[r.d] = r; });
+    fp.forEach((x, j) => {
+      const [day, est, O, Hh, Lw, C, lv] = x, x0 = L + j * cw + 2, bw = cw - 11;
+      const vmax = Math.max(1, ...lv.map((l) => l[1] + l[2] + l[3]));
+      if (est) o.push(`<rect x="${fvF1(x0 - 1)}" y="${T}" width="${fvF1(cw - 2)}" height="${PH}" fill="#F3F1EB"/>`);
+      let bq = 0, bv = 0, sq = 0, sv = 0;
+      lv.forEach((l) => {
+        const tv = l[1] + l[2] + l[3], bs = l[1] + l[2];
+        bq += l[0] * l[1]; bv += l[1]; sq += l[0] * l[2]; sv += l[2];
+        const share = bs ? l[1] / bs : 0.5;
+        const col = bs ? fvMix(share >= 0.5 ? UP : DOWN, 0.35 + 0.65 * Math.min(1, Math.abs(share - 0.5) * 2.5)) : "#C9C5BB";
+        o.push(`<rect x="${fvF1(x0)}" y="${fvF1(Y(l[0]) - rh / 2)}" width="${fvF1(Math.max(1, bw * Math.sqrt(tv / vmax)))}" height="${fvF1(rh)}" fill="${col}" fill-opacity="${est ? 0.55 : 1}"/>`);
+      });
+      const cx = fvF1(x0 + bw + 4);
+      o.push(`<line x1="${cx}" x2="${cx}" y1="${fvF1(Y(Hh))}" y2="${fvF1(Y(Lw))}" stroke="${INK}" stroke-width="0.8"/>`);
+      o.push(`<rect x="${fvF1(cx - 2)}" y="${fvF1(Y(Math.max(O, C)))}" width="4" height="${fvF1(Math.max(0.8, Math.abs(Y(O) - Y(C))))}" fill="${C >= O ? UP : DOWN}" stroke="${INK}" stroke-width="0.5"/>`);
+      if (bv) o.push(`<line x1="${fvF1(x0)}" x2="${fvF1(x0 + bw)}" y1="${fvF1(Y(bq / bv))}" y2="${fvF1(Y(bq / bv))}" stroke="${UP}" stroke-width="1.6"/>`);
+      if (sv) o.push(`<line x1="${fvF1(x0)}" x2="${fvF1(x0 + bw)}" y1="${fvF1(Y(sq / sv))}" y2="${fvF1(Y(sq / sv))}" stroke="${DOWN}" stroke-width="1.6" stroke-dasharray="2.5 1.5"/>`);
+      const f = FV_FORCE[byDay[day] ? fvForce(byDay[day]) : "none"];
+      o.push(fvTxt(x0 + (cw - 4) / 2, T + PH + 12, f.i, { a: "middle", s: 11, c: f.c, w: 700 }));
+      o.push(fvTxt(x0 + (cw - 4) / 2, T + PH + 24, est ? "ƯL" : dmy(day).slice(0, 2), { a: "middle", s: 8 }));
+    });
+    if (s.price != null && s.price >= y0 && s.price <= y1) { const y = fvF1(Y(s.price)); o.push(`<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${FV_BRAND}" stroke-width="1" stroke-dasharray="3 2" opacity=".7"/>`); }
+    $("f-fp").innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nến dòng tiền">${o.join("")}</svg><div class="legend fv-leg"><span>${n} phiên ${dmy(fp[0][0])} → ${dmy(fp[n - 1][0])}; số dưới cột là ngày, vạch tím đứt = giá hiện tại</span></div>`;
+  }
+
+  function fvCvd(s) {
+    const rows = (s.daily || []).filter((r) => r.c != null), n = rows.length;
+    if (!n) { $("f-cvd").innerHTML = ""; return; }
+    const W = 340, L = 8, R = 44, T1 = 10, H1 = 110, gap = 18, H2 = 90, H = T1 + H1 + gap + H2 + 18, bw = (W - L - R) / n;
+    const xc = (i) => L + i * bw + bw / 2;
+    let acc = 0;
+    const cum = rows.map((r) => (acc += r.buy - r.sell));
+    const pmin = Math.min(...rows.map((r) => r.c)), pmax = Math.max(...rows.map((r) => r.c));
+    const cmin = Math.min(0, ...cum), cmax = Math.max(0, ...cum);
+    const Y1 = (v) => T1 + (pmax - v) / ((pmax - pmin) || 1) * H1;
+    const T2 = T1 + H1 + gap, Y2 = (v) => T2 + (cmax - v) / ((cmax - cmin) || 1) * H2;
+    const o = [`<rect width="${W}" height="${H}" fill="#fff"/>`];
+    const nEst = rows.filter((r) => r.est).length;
+    if (nEst) o.push(`<rect x="${L}" y="${T1}" width="${fvF1(nEst * bw)}" height="${H1 + gap + H2}" fill="#EFEDE7"/>`, fvTxt(L + 3, T1 + 9, "ước lượng", { s: 8 }));
+    o.push(`<polyline points="${rows.map((r, i) => `${fvF1(xc(i))},${fvF1(Y1(r.c))}`).join(" ")}" fill="none" stroke="${INK}" stroke-width="1.8"/>`);
+    o.push(fvTxt(W - R + 4, Y1(rows[n - 1].c) + 3, px(rows[n - 1].c), { s: 9, c: INK, w: 700 }), fvTxt(W - R + 4, T1 + 8, "giá", { s: 8 }));
+    const z = fvF1(Y2(0)), pts = cum.map((v, i) => `${fvF1(xc(i))},${fvF1(Y2(v))}`), col = cum[n - 1] >= 0 ? UP : DOWN;
+    o.push(`<line x1="${L}" x2="${W - R}" y1="${z}" y2="${z}" stroke="${LINE}"/>`);
+    o.push(`<polygon points="${fvF1(xc(0))},${z} ${pts.join(" ")} ${fvF1(xc(n - 1))},${z}" fill="${col}" fill-opacity="0.14"/>`);
+    o.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="1.8"/>`);
+    o.push(fvTxt(W - R + 4, T2 + 8, "ròng", { s: 8 }), fvTxt(W - R + 4, T2 + 18, "cộng dồn", { s: 8 }));
+    const k = Math.min(5, n - 1), dp = rows[n - 1].c - rows[n - 1 - k].c, dc = cum[n - 1] - cum[n - 1 - k];
+    if (k > 0 && Math.sign(dp) && Math.sign(dc) && Math.sign(dp) !== Math.sign(dc)) {
+      const x0 = fvF1(xc(n - 1 - k)), x1 = fvF1(xc(n - 1));
+      o.push(`<rect x="${x0}" y="${T1}" width="${fvF1(x1 - x0)}" height="${H1 + gap + H2}" fill="${GOLD}" fill-opacity="0.13"/>`);
+      o.push(fvTxt((x0 + x1) / 2, T1 + H1 + 12, dc > 0 ? "phân kỳ: giá ↓, tiền ↑" : "phân kỳ: giá ↑, tiền ↓", { a: "middle", s: 8.5, c: GOLD2, w: 700, halo: 1 }));
+    }
+    o.push(fvTxt(L, H - 4, dmy(rows[0].d), { s: 8 }), fvTxt(W - R, H - 4, dmy(rows[n - 1].d), { s: 8, a: "end" }));
+    $("f-cvd").innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Giá và ròng cộng dồn">${o.join("")}</svg>`;
+  }
+
+  function renderFlowView(s) {
+    document.querySelectorAll("#f-win button").forEach((b) => b.setAttribute("aria-pressed", +b.dataset.fw === fwin ? "true" : "false"));
+    fvVerdict(s); fvForceLog(s); fvFootprint(s); fvCvd(s);
+  }
+  $("f-win").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-fw]"); if (!b) return;
+    fwin = +b.dataset.fw; try { localStorage.setItem("pp_fwin", String(fwin)); } catch (_) {}
+    const s = zsym(); if (s) renderFlowView(s);
+  });
+
   function showZoneMode() {
     document.querySelectorAll("#z-mode button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === zmode ? "true" : "false"));
     $("z-mktview").hidden = zmode !== "mkt";
     $("z-symview").hidden = zmode !== "sym";
+    $("z-flowview").hidden = zmode !== "flow";
+    $("z-ctrl").hidden = zmode === "mkt";
   }
   $("z-mode").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-mode]"); if (!b) return;
@@ -499,6 +677,12 @@
     if (zmode === "mkt") { $("zoneKicker").textContent = Z ? `phiên ${dmy(Z.trade_date)}` : "—"; renderMarket(); return; }
     const s = zsym();
     if (!s) return;
+    if (zmode === "flow") {
+      $("zoneKicker").textContent = `phiên ${dmy(Z.trade_date)}`;
+      $("z-px").textContent = px(s.price);
+      renderFlowView(s);
+      return;
+    }
     const p = s.profiles[zwin] || s.profiles["40"];
     $("zoneKicker").textContent = `phiên ${dmy(Z.trade_date)}`;
     $("z-px").textContent = px(s.price);
@@ -730,7 +914,7 @@
     if (name === "zone") renderZone();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = /^#(today|history|chart|zone|settings)$/.exec(location.hash); if (m) switchTab(m[1]); }
+  function applyHash() { const m = /^#(today|history|chart|zone|settings)$/.exec(location.hash); switchTab(m ? m[1] : "zone"); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });

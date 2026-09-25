@@ -287,3 +287,27 @@ def test_top_levels_empty_when_source_has_no_side():
     s = sess({"50": [0, 0, 1000, 0, 0]}, 50)
     p = profile.build([("2026-09-18", s, 1.0)])
     assert p["top"] == {"buy": [], "sell": [], "big_buy": [], "big_sell": []}
+
+
+def test_footprint_adjusts_levels_and_skips_sessions_without_bar():
+    raw = sess({"74.2": [100, 20, 0, 60, 0], "74.3": [0, 0, 0, 0, 0], "74.0": [0, 0, 500, 0, 0]}, 74.2)
+    est = sess({"65.0": [10, 10, 0, 0, 0]}, 65.0, est=True)
+    ohlc = {"2026-09-18": [67.0, 67.8, 66.9, 67.45]}         # close kho 67.45 ↔ close thô 74.2 → × 0,909
+    fp = profile.footprint([("2026-09-17", est), ("2026-09-18", raw)], ohlc)
+    assert len(fp) == 1                                       # 17/09 không có nến kho → bỏ
+    day, e, o, h, l, c, lv = fp[0]
+    assert day == "2026-09-18" and e == 0 and c == 67.45
+    assert [x[0] for x in lv] == [round(74.0 * 67.45 / 74.2, 3), 67.45]   # bỏ 74.3 (KL 0), xếp theo giá
+    assert lv[1][1:] == [100, 20, 0, 60, 0]
+    many = [(f"2026-09-{d:02d}", sess({"10": [1, 1, 0, 0, 0]}, 10.0)) for d in range(1, 21)]
+    assert len(profile.footprint(many, {d: [10, 10, 10, 10] for d, _ in many}, 12)) == 12
+
+
+def test_build_symbol_daily_has_close_and_prev_close():
+    from zone import run_daily
+    st = {"sessions": {"2026-09-24": _sess({"65": [400, 100, 10, 0, 0]}), "2026-09-25": _sess({"66": [1, 2, 0, 0, 0]})}}
+    closes = {"2026-09-23": 64.0, "2026-09-24": 65.0, "2026-09-25": 66.0}
+    ohlc = {d: [c, c, c, c] for d, c in closes.items()}
+    out = run_daily.build_symbol(st, closes, dict(profile.DEFAULT_SETTINGS, windows=[2]), ohlc)
+    assert [(r["c"], r["pc"]) for r in out["daily"]] == [(65.0, 64.0), (66.0, 65.0)]
+    assert [x[0] for x in out["fp"]] == ["2026-09-24", "2026-09-25"]

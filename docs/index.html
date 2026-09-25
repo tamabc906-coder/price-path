@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -32,7 +32,7 @@
 </defs></svg>
 
 <main id="main">
-  <section class="panel on" id="p-today" role="tabpanel">
+  <section class="panel" id="p-today" role="tabpanel">
     <div class="head">
       <div class="row">
         <div class="brand"><svg><use href="#logo"/></svg><div class="title">PRICE PATH</div></div>
@@ -84,14 +84,21 @@
     <div class="tbl" id="histTable"></div>
   </section>
 
-  <section class="panel" id="p-zone" role="tabpanel">
+  <section class="panel on" id="p-zone" role="tabpanel">
     <div class="head">
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Vùng giá</div></div><span class="kicker" id="zoneKicker">—</span></div>
       <div class="sub">Khớp lệnh 2 tháng gộp theo mức giá: mua nhiều ở đâu, bán nhiều ở đâu</div>
     </div>
     <div class="sort" id="z-mode">
       <button type="button" data-mode="sym" aria-pressed="true">Theo mã</button>
+      <button type="button" data-mode="flow" aria-pressed="false">Dòng tiền chủ động</button>
       <button type="button" data-mode="mkt" aria-pressed="false">Toàn danh mục</button>
+    </div>
+    <div class="ctrl" id="z-ctrl">
+      <label for="z-sym">Mã</label>
+      <select id="z-sym"></select>
+      <span class="sp"></span>
+      <span class="px" id="z-px">—</span>
     </div>
     <div id="z-mktview" hidden>
       <div class="sort" id="z-msort">
@@ -103,12 +110,6 @@
       <div class="tbl scroll" id="z-mkt"></div>
     </div>
     <div id="z-symview">
-    <div class="ctrl">
-      <label for="z-sym">Mã</label>
-      <select id="z-sym"></select>
-      <span class="sp"></span>
-      <span class="px" id="z-px">—</span>
-    </div>
     <div class="sort" id="z-win">
       <span class="k">Cửa sổ</span>
       <button type="button" data-win="10" aria-pressed="false">10 phiên</button>
@@ -125,6 +126,38 @@
     <div class="tbl" id="z-buy"></div>
     <div class="tbl" id="z-sell"></div>
     <div class="box" id="z-why"></div>
+    </div>
+    <div id="z-flowview" hidden>
+      <div class="sort" id="f-win">
+        <span class="k">Thống kê</span>
+        <button type="button" data-fw="10" aria-pressed="true">10 phiên</button>
+        <button type="button" data-fw="20" aria-pressed="false">20 phiên</button>
+        <button type="button" data-fw="40" aria-pressed="false">40 phiên</button>
+      </div>
+      <div class="fv-verdict" id="f-verdict"></div>
+      <div class="tbl fv-card">
+        <h4>A · Nhật ký lực từng phiên <span class="n">— giá lên/xuống × bên nào chủ động hơn</span></h4>
+        <div id="f-force"></div>
+        <div class="fv-how">
+          <div><b class="up">▲ Mua đẩy lên</b> — giá tăng, mua chủ động áp đảo: tiền trả giá cao để có hàng.</div>
+          <div><b class="down">▼ Bán đạp xuống</b> — giá giảm, bán chủ động áp đảo: người bán chấp nhận giá thấp để thoát.</div>
+          <div><b class="prop">⤒ Có người đỡ</b> — giá giảm hoặc đứng nhưng mua chủ động áp đảo: có bên hấp thụ hàng bán.</div>
+          <div><b class="dist">⤓ Lên nhưng hàng ra</b> — giá tăng hoặc đứng nhưng bán chủ động áp đảo: có bên tranh thủ thoát hàng.</div>
+          <div><b class="bal">⇆ Giằng co</b> — chênh mua/bán dưới 5 %. Ô nhạt là phiên ước lượng từ nến 1 phút.</div>
+        </div>
+      </div>
+      <div class="tbl fv-card">
+        <h4>B · Nến dòng tiền <span class="n">— tiền mua/bán ở giá nào trong phiên</span></h4>
+        <div id="f-fp"></div>
+        <div class="legend fv-leg"><span><i class="zb"></i>mua CĐ nhiều hơn</span><span><i class="zs"></i>bán CĐ nhiều hơn</span><span><i class="fb"></i>giá TB mua CĐ</span><span><i class="fs"></i>giá TB bán CĐ</span></div>
+        <div class="fv-how">Mỗi cột là một phiên, mỗi vạch ngang là một mức giá đã khớp: <b>dài</b> = khớp nhiều, <b>xanh</b> = mua chủ động nhiều hơn, <b>đỏ</b> = bán chủ động nhiều hơn; cây nến mảnh bên phải là giá mở → đóng. <b>Đỏ dồn đáy, nến đóng gần đáy</b> = bán đạp xuống tới cuối phiên. <b>Xanh dồn đỉnh, đóng gần đỉnh</b> = mua đuổi lên. <b>Xanh ở đáy mà đóng cao</b> = có người đỡ rồi kéo lên. <b>Đỏ ở đỉnh mà đóng thấp</b> = lên rồi bị xả. Cột nhạt "ƯL" là phiên ước lượng.</div>
+      </div>
+      <div class="tbl fv-card">
+        <h4>C · Giá và dòng tiền cộng dồn <span class="n">— cùng trục thời gian</span></h4>
+        <div id="f-cvd"></div>
+        <div class="fv-how">Trên: giá đóng cửa. Dưới: ròng mua − bán chủ động cộng dồn. Hai đường <b>đi cùng chiều</b> = giá được dòng tiền xác nhận; <b>tách nhau</b> (tô vàng) = phân kỳ. Nền xám là phiên ước lượng.</div>
+      </div>
+      <div class="box"><p class="warn">Thống kê mô tả dòng tiền đã xảy ra, không phải tín hiệu mua bán. Các lần đo trước (23/09, 25/09) chưa thấy mua/bán chủ động báo trước hướng giá phiên sau. Tick thật có từ 18/09/2026; phần trước đó ước lượng từ nến 1 phút.</p></div>
     </div>
   </section>
 
@@ -149,15 +182,15 @@
 </main>
 
 <nav role="tablist" aria-label="Điều hướng">
-  <button role="tab" aria-selected="true" data-tab="today"><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
+  <button role="tab" aria-selected="true" data-tab="zone"><svg><use href="#i-zone"/></svg><span>Vùng giá</span></button>
+  <button role="tab" aria-selected="false" data-tab="today"><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
   <button role="tab" aria-selected="false" data-tab="chart"><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
   <button role="tab" aria-selected="false" data-tab="history"><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
-  <button role="tab" aria-selected="false" data-tab="zone"><svg><use href="#i-zone"/></svg><span>Vùng giá</span></button>
   <button role="tab" aria-selected="false" data-tab="settings"><svg><use href="#i-settings"/></svg><span>Cài đặt</span></button>
 </nav>
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

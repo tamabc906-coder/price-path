@@ -152,6 +152,25 @@ def top_levels(pts: list[tuple[float, list[int], bool, str]], top_n: int) -> dic
     return out
 
 
+def footprint(sessions: list[tuple[str, dict]], ohlc: dict[str, list[float]], n: int = 12) -> list:
+    """Nến dòng tiền: n phiên gần nhất có nến kho, CŨ → MỚI.
+
+    Mỗi phiên [ngày, est, O, H, L, C, [[giá, mua, bán, x, mua_lớn, bán_lớn], …]] — mức giá khớp nhân hệ số
+    adjust_factor để cùng thang giá điều chỉnh với O/H/L/C của kho nến; bỏ mức không có KL.
+    Phiên không có nến kho (chưa tải / nghỉ) bị bỏ: không có O/H/L/C thì không vẽ được nến.
+    """
+    out = []
+    for day, sess in sessions:
+        bar = ohlc.get(day)
+        if not bar:
+            continue
+        f = adjust_factor(sess, bar[3])
+        lv = sorted([round(float(p) * f, 3)] + [int(v) for v in arr[:5]]
+                    for p, arr in sess.get("levels", {}).items() if sum(arr[:3]) > 0)
+        out.append([day, 1 if sess.get("est", False) else 0] + [float(v) for v in bar[:4]] + [lv])
+    return out[-n:]
+
+
 def session_stats(day: str, sess: dict) -> dict:
     """Một dòng thống kê mua/bán chủ động của MỘT phiên (giá thô, không cần hệ số).
 

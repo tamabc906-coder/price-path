@@ -54,12 +54,20 @@ def closes_of(h: dict, symbol: str) -> dict[str, float]:
     return {r[0]: float(r[4]) for r in h["bars"].get(symbol, [])}
 
 
+def ohlc_of(h: dict, symbol: str) -> dict[str, list[float]]:
+    return {r[0]: [float(r[1]), float(r[2]), float(r[3]), float(r[4])] for r in h["bars"].get(symbol, [])}
+
+
 def volumes_of(h: dict, symbol: str) -> dict[str, int]:
     return {r[0]: int(r[5]) for r in h["bars"].get(symbol, [])}
 
 
-def build_symbol(st: dict, closes: dict[str, float], cfg: dict) -> dict:
-    """Profile cho từng cửa sổ của một mã, mức giá đã về thang điều chỉnh hiện hành."""
+def build_symbol(st: dict, closes: dict[str, float], cfg: dict, ohlc: dict[str, list[float]] | None = None) -> dict:
+    """Profile cho từng cửa sổ của một mã, mức giá đã về thang điều chỉnh hiện hành.
+
+    Mỗi dòng daily thêm c / pc (close điều chỉnh của phiên / phiên liền trước, từ kho nến) để giao diện ghép
+    lực mua bán với hướng giá; fp = nến dòng tiền 12 phiên (profile.footprint).
+    """
     price = None
     price_date = ""
     if closes:
@@ -69,7 +77,13 @@ def build_symbol(st: dict, closes: dict[str, float], cfg: dict) -> dict:
     # Thống kê mua/bán chủ động theo phiên (giá thô): tối đa khung lớn nhất, cũ → mới
     n_max = max(int(w) for w in cfg["windows"])
     daily = [profile.session_stats(d, s) for d, s in store.recent(st, n_max)]
+    days = sorted(closes)
+    prev = {days[i]: closes[days[i - 1]] for i in range(1, len(days))}
+    for r in daily:
+        r["c"] = closes.get(r["d"])
+        r["pc"] = prev.get(r["d"])
     out["daily"] = daily
+    out["fp"] = profile.footprint(store.recent(st, n_max), ohlc or {}, 12)
     for w in cfg["windows"]:
         rows = [(d, s, profile.adjust_factor(s, closes.get(d))) for d, s in store.recent(st, int(w))]
         p = profile.build(rows, cfg)
@@ -161,7 +175,7 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
         st = store.load(sym)
         if not st["sessions"]:
             continue
-        data = build_symbol(st, closes_of(h, sym), cfg)
+        data = build_symbol(st, closes_of(h, sym), cfg, ohlc_of(h, sym))
         data["name"] = it.get("company_name") or ""
         data["exchange"] = it.get("exchange") or ""
         data["last_session"] = max(st["sessions"])
