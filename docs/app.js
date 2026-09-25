@@ -358,6 +358,14 @@
       out.push(`<line x1="${left - 6}" y1="${y}" x2="${W - right}" y2="${y}" stroke="#3B2A6B" stroke-width="1.2" stroke-dasharray="3 2"/>`);
       labs.push({ y: y - 2, t: `giá ${px(price)}`, c: "#3B2A6B", b: true });
     }
+    // Mức giá chính xác mua / bán chủ động nhiều nhất (#1 của bảng top) — vạch ngắn + nhãn ▲ ▼.
+    const tl = p.top || {};
+    [[(big ? tl.big_buy : tl.buy) || [], UP, "▲ mua"], [(big ? tl.big_sell : tl.sell) || [], DOWN, "▼ bán"]].forEach(([rows, col, t]) => {
+      if (!rows.length) return;
+      const y = f1(yPrice(rows[0].p));
+      out.push(`<line x1="${W - right - 40}" y1="${y}" x2="${W - right}" y2="${y}" stroke="${col}" stroke-width="1.5"/>`);
+      labs.push({ y: y - 2, t: `${t} ${px(rows[0].p)}`, c: col, b: true });
+    });
     labs.sort((a, b) => a.y - b.y);
     let last = -1e9;
     labs.forEach((l) => {
@@ -382,6 +390,17 @@
       <table><thead><tr><th>Vùng giá</th><th>KL</th><th>% mua</th><th>Cách giá</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
+  // Mức giá CHÍNH XÁC (không gộp ô) có KL mua / bán chủ động lớn nhất trong khung — profiles[w].top.
+  function topTable(id, title, rows, side) {
+    if (!rows || !rows.length) { $(id).innerHTML = `<h4>${title} <span class="n">— không có (nguồn không ghi bên chủ động)</span></h4>`; return; }
+    const body = rows.map((r, i) => {
+      const d = r.dist == null ? "—" : `${r.dist > 0 ? "+" : ""}${r.dist.toFixed(1)} %`;
+      const est = r.est_share >= 0.5 ? `<span class="est">ước lượng ${Math.round(r.est_share * 100)} %</span>` : "";
+      return `<tr><td><b>${i + 1}.</b> ${px(r.p)}${est}<span class="z">${pct(r.share)} mua tại giá · ${r.sessions} phiên · gần nhất ${dmy(r.last)}</span></td><td>${vol(r.vol)}</td><td class="share ${side === "mua" ? "up" : "down"}"><b>${pct(r.pct)}</b></td><td>${d}</td></tr>`;
+    }).join("");
+    $(id).innerHTML = `<h4>${title} <span class="n">— ${rows.length} mức giá, lớn nhất trước</span></h4>
+      <table><thead><tr><th>Giá</th><th>KL ${side}</th><th>% tổng ${side}</th><th>Cách giá</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
 
   // ---- Mua/bán chủ động theo phiên (latest.symbols[m].daily, profiles[w].flow, latest.market) ----
   let zmode = "sym", zmsort = "buy";
@@ -493,6 +512,9 @@
     $("z-strip").innerHTML = `<b>${p.n_real}/${p.n} phiên là tick thật</b> (${dmy(p.from)} → ${dmy(p.to)})${estN ? `; ${estN} phiên còn lại dựng từ nến 1 phút — KL theo giá đúng, <b>mua/bán chỉ ước lượng</b> theo hướng nến, tô nhạt` : ""}${fac}. Mua ${pct(p.buy / (p.buy + p.sell || 1))} · ATO/ATC ${pct(p.x / (p.total || 1))} · tổng KL ${vol(p.total)}.`;
     $("z-prof").innerHTML = profileChart(p, s.price, 358, zbig);
     renderFlow(s, p);
+    const top = p.top || {};
+    topTable("z-topb", zbig ? "Giá cá mập mua CĐ nhiều nhất" : "Giá mua chủ động nhiều nhất", zbig ? top.big_buy : top.buy, "mua");
+    topTable("z-tops", zbig ? "Giá cá mập bán CĐ nhiều nhất" : "Giá bán chủ động nhiều nhất", zbig ? top.big_sell : top.sell, "bán");
     if (zbig) {
       zoneTable("z-buy", "Cá mập mua nhiều", p.big_buy_zones, "up");
       zoneTable("z-sell", "Cá mập bán nhiều", p.big_sell_zones, "down");
@@ -504,6 +526,7 @@
     $("z-why").innerHTML = `<h4>Cách đọc</h4>
       <p>Mỗi hàng là một ô giá rộng ${px(p.bin)}; thanh dài = nhiều cổ phiếu đã đổi chủ ở giá đó trong ${p.n} phiên. <b>POC</b> là ô nhiều nhất, <b>Value Area</b> là dải chứa 70 % KL — nơi phần lớn cổ phiếu đã đổi chủ; <b>VAH / VAL</b> là biên trên / biên dưới của dải. Đã đo 10 năm trên 39 mã: VAH/VAL không giữ hay cản giá tốt hơn một mức bất kỳ — chỉ dùng làm bản đồ. Xanh/đỏ = bên chủ động: mua chủ động là lệnh mua đập vào giá bán đang chờ, bán chủ động ngược lại; ATO/ATC không có bên chủ động. Mỗi cổ phiếu khớp có một bên chủ động và một bên bị động, nên <b>mua bị động = bán chủ động</b>.</p>
       <p><b>Vùng mua nhiều</b> = các ô liền nhau có KL ≥ ${st.zone_vol_mult}× trung bình ô và ≥ ${Math.round(st.buy_share_min * 100)} % mua chủ động; <b>vùng bán nhiều</b> ≤ ${Math.round(st.sell_share_max * 100)} % mua. Vùng mua dưới giá hiện tại thường là chỗ có người đỡ; vùng bán trên giá là chỗ hàng chờ ra.</p>
+      <p><b>Giá mua / bán chủ động nhiều nhất</b> xếp theo từng mức giá khớp chính xác (không gộp ô), cộng cả ${p.n} phiên; giá cũ đã quy về thang điều chỉnh rồi làm tròn về bước giá. <b>% tổng</b> = phần của mức đó trong toàn bộ mua (bán) chủ động của khung. Mức có nhãn "ước lượng" phần lớn KL đến từ phiên dựng bằng nến 1', mua/bán chỉ đoán — chọn khung 10 phiên để xem gần như toàn tick thật.</p>
       <p class="warn">Tick thật chỉ gom được mỗi ngày một phiên từ 18/09/2026; phần ước lượng từ nến 1' được thay dần. Chưa đo được vùng có giá trị dự báo hay không — đây là thống kê mô tả, không phải khuyến nghị.</p>`;
   }
   $("z-sym").addEventListener("change", () => { zcur = $("z-sym").value; renderZone(); });
