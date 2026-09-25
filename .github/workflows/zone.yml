@@ -47,6 +47,14 @@ jobs:
       - name: Gom tick + dựng vùng giá
         id: collect
         continue-on-error: true
+        # Khoá gửi thông báo vùng giá + cá mập (zone/alerts.py, 25/09/2026) — cùng bộ secrets với daily.yml
+        env:
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_TOKEN: ${{ secrets.WORKER_TOKEN }}
+          PUSH_SUBS_FALLBACK: ${{ secrets.PUSH_SUBS_FALLBACK }}
         run: |
           if [ "${{ github.event.inputs.force }}" = "true" ]; then FORCE=--force; else FORCE=; fi
           python -m zone.run_daily $FORCE

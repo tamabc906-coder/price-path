@@ -26,6 +26,10 @@ DEFAULT_SETTINGS = {
     "sell_share_max": 0.42,
     "big_lot_value_vnd": 500_000_000,
     "top_n": 5,
+    # Thông báo điện thoại (zone/alerts.py): giá mua/bán lớn nhất của cá mập cách nhau ≤ whale_gap (nghìn đồng);
+    # quá alert_digest mã trong một phiên → một thông báo tổng hợp.
+    "whale_gap": 0.3,
+    "alert_digest": 6,
 }
 # Hệ số điều chỉnh lệch dưới mức này coi như 1 (DNSE làm tròn 2 chữ số; 0,5 % còn xa mức chia cổ tức nhỏ nhất ~2 %).
 FACTOR_NOISE = 0.005

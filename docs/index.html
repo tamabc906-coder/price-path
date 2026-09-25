@@ -171,7 +171,7 @@
       <div class="state" id="pushState">Đang kiểm tra…</div>
       <div class="btns"><button type="button" class="btn primary" id="pushBtn">Bật thông báo trên máy này</button><button type="button" class="btn" id="testBtn" hidden>Gửi thử</button></div>
       <div id="subCodeWrap"></div>
-      <div class="more" id="pushHelp">Sau phiên 15:40 T2–T6, app chỉ báo mã có P(tăng 10p) qua ngưỡng và ô chế độ đủ mẫu. Quá 6 mã → một thông báo gộp.</div>
+      <div class="more" id="pushHelp">Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá.</div>
       <div class="srow" id="thresholds"></div>
     </div></div>
     <div class="sec"><div class="card"><h3>02 · Lớp máy học (LightGBM) — xác suất hướng</h3><div id="gateBody"></div></div></div>
@@ -191,6 +191,6 @@
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

@@ -157,7 +157,7 @@ def heartbeat_payload(cov80: float | None, trade_date: str) -> dict:
 
 def test_payload() -> dict:
     return {"kind": "test", "title": "Thông báo thử — máy này đã nhận được",
-            "body": "Khi có mã dính sự kiện đã đo có lợi thế (gap giảm được lấp tại đáy) sau phiên, thẻ như thế này sẽ hiện kể cả khi app đang đóng.",
+            "body": "Sau phiên, khi có mã phá VAH/VAL có cá mập cùng chiều hoặc cá mập mua/bán dồn về cùng một giá, thẻ như thế này sẽ hiện kể cả khi app đang đóng.",
             "url": "./#today", "tag": "pp-test"}
 
 

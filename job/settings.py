@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 DEFAULTS = {
     # "events": chuông theo sự kiện đạt cổng E1 (reports/events-*.md); "p10": luật P(tăng) cũ (đo ≈ mốc chung, tắt 23/09/2026)
     "alert_mode": "events",
-    # chỉ push sự kiện CHƯA có ở app khác: SC đã có ở Wyckoff Radar, trần+KL ở Candle Radar
-    "events_push": ["gap_fill_demand"],
+    # 25/09/2026: người dùng bỏ push theo sự kiện, thay bằng push vùng giá + cá mập (zone/alerts.py).
+    # Sự kiện vẫn tính và hiện ở tab Hôm nay; thêm mã vào đây là bật lại push sự kiện đó.
+    "events_push": [],
     "events_enabled": None,    # None = các sự kiện ĐẠT cổng trong model/artifacts/events_stats.json
     "p_min": 0.58,             # P(tăng 10p) tối thiểu để báo khi alert_mode="p10" (đo: chỉ ~15 % hàng đạt)
     "n_min": 200,              # ô chế độ phải có ≥ ngần này mẫu lịch sử mới đáng báo

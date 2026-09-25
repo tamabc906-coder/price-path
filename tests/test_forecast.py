@@ -98,7 +98,7 @@ def test_event_today_triggers_alert_in_events_mode():
     st, days = _store()
     _plant_gap_fill(st, "AAA", days)
     items = [{"symbol": s} for s in ("AAA", "BBB")]
-    cfg = dict(settings.DEFAULTS, events_enabled=["gap_fill_demand"])
+    cfg = dict(settings.DEFAULTS, events_enabled=["gap_fill_demand"], events_push=["gap_fill_demand"])
     fc, _, info = forecast.forecast_all(st, items, days[-1], cfg, conformal.new_state(forecast.HS), n_sim=100)
     a, b = fc
     assert [e["code"] for e in a["events"]] == ["gap_fill_demand"] and a["events"][0]["age"] == 0

@@ -23,7 +23,7 @@ from common.vndirect import VndirectClient
 from common import vndirect
 from job import watchlist
 
-from . import backfill, collect, profile, store
+from . import alerts, backfill, collect, profile, store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("zone.job")
@@ -31,6 +31,8 @@ log = logging.getLogger("zone.job")
 ZONE_SITE = SITE_DATA / "zone"
 LATEST = ZONE_SITE / "latest.json"
 STATE = ZONE_SITE / "state.json"
+ALERTS = ZONE_SITE / "alerts.json"
+ALERT_KEEP = 30     # số phiên giữ trong nhật ký thông báo
 SETTINGS = ZONE_SITE / "settings.json"
 
 
@@ -109,8 +111,34 @@ def market_row(daily: list[dict]) -> dict | None:
     }
 
 
+def handle_alerts(syms: list[str], h: dict, trade_date: str, cfg: dict, send: bool = True) -> dict:
+    """Tính + gửi thông báo vùng giá (zone/alerts.py) cho phiên trade_date; ghi docs/data/zone/alerts.json.
+
+    Chống gửi trùng theo (phiên, mã): zone chạy 4 lượt/ngày + 08:15 sáng hôm sau + mỗi lần đẩy code, và một mã
+    gom trễ ở lượt sau vẫn phải được báo — nên nhớ mã đã báo của từng phiên, không chỉ "phiên đã báo".
+    """
+    log_ = _load(ALERTS, {"days": {}})
+    done = log_["days"].get(trade_date) or {"items": [], "push": []}
+    sent = {a["symbol"] for a in done["items"]}
+    found = alerts.evaluate_all(syms, {s: closes_of(h, s) for s in syms}, trade_date, cfg)
+    new = [a for a in found if a["symbol"] not in sent]
+    for a in new:
+        log.info("Cảnh báo %s: %s", a["symbol"], alerts.headline(a))
+    res = {"n_symbols": len(new), "sent": 0, "skipped_already": len(found) - len(new)}
+    if new and send:
+        res = alerts.send(new, trade_date, int(cfg.get("alert_digest", 6)))
+        log.info("Push vùng giá: %s", res)
+    if new:
+        done["items"] += new
+        done["push"].append({"at": datetime.now(TZ).isoformat(timespec="seconds"), "sent": bool(send), **res})
+        log_["days"][trade_date] = done
+        log_["days"] = dict(sorted(log_["days"].items())[-ALERT_KEEP:])
+        _dump(ALERTS, log_)
+    return res
+
+
 def run(force: bool = False, dry_run: bool = False, only: list[str] | None = None,
-        rebuild: bool = False) -> int:
+        rebuild: bool = False, no_push: bool = False) -> int:
     now = datetime.now(TZ)
     cfg = settings()
     items, src = watchlist.load()
@@ -199,7 +227,13 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
         return 0
     _dump(LATEST, latest)
     if not rebuild:     # dựng lại từ kho không gom gì — giữ nguyên nhật ký lượt gom thật gần nhất
-        _dump(STATE, _state(now, src, collected, skipped, failed, warnings, wrote=True))
+        state = _state(now, src, collected, skipped, failed, warnings, wrote=True)
+        try:
+            state["push"] = handle_alerts(list(symbols), h, trade_date, cfg, send=not no_push)
+        except Exception as exc:  # noqa: BLE001 — lỗi thông báo không được làm mất dữ liệu vùng giá đã dựng
+            log.exception("Tính/gửi thông báo vùng giá lỗi")
+            state["push"] = {"error": str(exc)[:200]}
+        _dump(STATE, state)
     log.info("Ghi %s: %d mã, phiên %s; mới %d, bỏ qua %d, lỗi %d", LATEST.name, len(symbols), trade_date,
              len(collected), len(skipped), len(failed))
     return 0 if not failed else 1
@@ -222,9 +256,29 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="gọi nguồn lại dù đã có phiên thật hôm nay, ghi đè")
     ap.add_argument("--dry-run", action="store_true", help="không ghi kho/latest, chỉ in tóm tắt")
     ap.add_argument("--rebuild", action="store_true", help="không gọi nguồn tick, chỉ dựng lại latest.json từ kho")
+    ap.add_argument("--no-push", action="store_true", help="tính và ghi alerts.json nhưng không gửi điện thoại")
+    ap.add_argument("--alerts-only", metavar="NGÀY", nargs="?", const="",
+                    help="chỉ in cảnh báo của phiên NGÀY (mặc định phiên mới nhất trong kho) — không gửi, không ghi")
     a = ap.parse_args()
+    if a.alerts_only is not None:
+        sys.exit(print_alerts(a.alerts_only, [s.upper() for s in a.symbols] or None))
     sys.exit(run(force=a.force, dry_run=a.dry_run, only=[s.upper() for s in a.symbols] or None,
-                 rebuild=a.rebuild))
+                 rebuild=a.rebuild, no_push=a.no_push))
+
+
+def print_alerts(day: str, only: list[str] | None) -> int:
+    cfg = settings()
+    h = hist.load()
+    syms = only or [p.stem for p in sorted(store.ZONE_DATA.glob("*.json"))]
+    day = day or max(max(store.load(s)["sessions"], default="") for s in syms)
+    found = alerts.evaluate_all(syms, {s: closes_of(h, s) for s in syms}, day, cfg)
+    print(f"Phiên {day}: {len(found)} mã")
+    for a in found:
+        print(" ", alerts.symbol_payload(a)["title"], "|", alerts.symbol_payload(a)["body"])
+    if len(found) > int(cfg.get("alert_digest", 6)):
+        d = alerts.digest_payload(found, day)
+        print("Tổng hợp:", d["title"], "|", d["body"])
+    return 0
 
 
 if __name__ == "__main__":
