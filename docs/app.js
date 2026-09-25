@@ -539,7 +539,7 @@
     const cnt = {};
     rows.forEach((r) => { const k = fvForce(r); cnt[k] = (cnt[k] || 0) + 1; });
     const ranked = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
-    const tally = ranked.map(([k, n]) => `${n} ${FV_FORCE[k].i} ${FV_FORCE[k].t[0].toLowerCase() + FV_FORCE[k].t.slice(1)}`).join(" · ");
+    const tally = ranked.map(([k, n]) => `<span style="color:${FV_FORCE[k].c}">${n} ${FV_FORCE[k].i} ${FV_FORCE[k].t[0].toLowerCase() + FV_FORCE[k].t.slice(1)}</span>`).join('<span class="sep"> · </span>');
     // Tiêu đề = kiểu lực chiếm ≥ 50 % số phiên của khung; không có thì xét tổng cả khung
     // Quá nửa số phiên nguồn không ghi bên chủ động (DGC 09/2026) → không kết luận từ phần còn lại
     const [topK, topN] = ranked[0] || ["none", 0];
@@ -548,8 +548,8 @@
     if (st.flow != null && head !== FV_FORCE.none) chips.push(`Mua CĐ ${Math.round((st.flow + 1) / 2 * 100)} % · bán ${Math.round((1 - st.flow) / 2 * 100)} %`);
     if (st.bigNet != null) chips.push(`Cá mập ${fvBil(st.bigNet)} (${st.bigN} phiên tick thật)`);
     const el = $("f-verdict");
-    el.style.background = head.c;
-    el.innerHTML = `<div class="k">${esc(zcur)} · ${st.n} phiên gần nhất${st.est ? ` · ${st.est} phiên ước lượng` : ""}</div><div class="t">${head.t}</div><div class="d"><b>${tally}</b></div><div class="d">${head.d}</div><div class="chips">${chips.map((t) => `<span>${t}</span>`).join("")}</div>`;
+    el.style.borderColor = head.c;   // màu kiểu lực chỉ ở viền; chữ từng mục tô như khối chú giải
+    el.innerHTML = `<div class="k">${esc(zcur)} · ${st.n} phiên gần nhất${st.est ? ` · ${st.est} phiên ước lượng` : ""}</div><div class="t" style="color:${head.c}">${head.t}</div><div class="d"><b>${tally}</b></div><div class="d">${head.d}</div><div class="chips">${chips.map((t) => `<span>${t}</span>`).join("")}</div>`;
   }
 
   function fvForceLog(s) {

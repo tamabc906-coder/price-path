@@ -229,13 +229,14 @@ nav button[aria-selected="true"] { background: var(--brand); color: #fff; font-w
 .evsum .v { font-size: 15px; font-weight: 700; }
 
 /* Vùng giá · Dòng tiền chủ động (bản mẫu flow-view-lab, 25/09/2026) */
-.fv-verdict { margin: 10px 18px 0; border-radius: 14px; padding: 14px; color: #fff; background: var(--mute); }
-.fv-verdict .k { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
+.fv-verdict { margin: 10px 18px 0; border-radius: 14px; padding: 14px; color: var(--ink); background: #fff; border: 2px solid var(--mute); }
+.fv-verdict .k { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
 .fv-verdict .t { font-size: 21px; font-weight: 800; margin: 2px 0 6px; line-height: 1.2; }
 .fv-verdict .d { font-size: 13px; line-height: 1.5; }
 .fv-verdict .d + .d { margin-top: 4px; }
 .fv-verdict .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.fv-verdict .chips span { background: rgba(255,255,255,.18); border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+.fv-verdict .chips span { background: #F4F1EA; color: var(--ink); border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+.fv-verdict .sep { color: var(--mute); font-weight: 400; }
 .fv-card svg { display: block; width: 100%; height: auto; }
 .fv-strip { display: flex; margin: 2px 4px 2px; }
 .fv-strip span { display: inline-flex; align-items: center; justify-content: center; width: 4.4%; aspect-ratio: 1; margin: 0 .3%; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 700; }
