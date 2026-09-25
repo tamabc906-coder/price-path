@@ -259,3 +259,31 @@ def test_session_stats_flags_source_without_side():
     r = profile.session_stats("2026-09-25", _sess({"35.25": [0, 0, 18200, 0, 0]}))
     assert r["no_side"] is True and r["buy_share"] is None and r["big_net_val"] is None
     assert profile.session_stats("d", _sess({"10": [1, 0, 5, 0, 0]}))["no_side"] is False
+
+
+def test_top_levels_rank_exact_prices_after_adjustment():
+    # Phiên thô 74.2 × 0,909 = 67.45 → làm tròn bước 0,1 về 67.5, gộp chung với phiên đã điều chỉnh ở 67.5.
+    raw = sess({"74.2": [100000, 20000, 0, 60000, 0], "75.0": [5000, 80000, 0, 0, 30000]}, 74.2)
+    est = sess({"67.5": [10000, 10000, 0, 0, 0], "66.0": [40000, 1000, 0, 0, 0]}, 67.5, est=True)
+    p = profile.build([("2026-09-17", est, 1.0), ("2026-09-18", raw, 65.18 / 71.7)], {"top_n": 2})
+    t = p["top"]
+    assert [r["p"] for r in t["buy"]] == [67.5, 66.0]
+    top = t["buy"][0]
+    assert top["vol"] == 110000 and top["sessions"] == 2 and top["last"] == "2026-09-18"
+    assert top["pct"] == round(110000 / 155000, 4)
+    assert top["share"] == round(110000 / 140000, 3)
+    assert top["est_share"] == round(20000 / 140000, 3)
+    assert t["sell"][0]["p"] == 68.2                                  # 75.0 × 0,909 = 68.18 → 68.2
+    assert t["sell"][0]["vol"] == 80000
+    assert len(t["buy"]) == 2                                        # top_n
+    # Lệnh lớn: chỉ phiên tick thật, est_share 0
+    assert [r["vol"] for r in t["big_buy"]] == [60000] and t["big_buy"][0]["est_share"] == 0.0
+    assert [r["vol"] for r in t["big_sell"]] == [30000]
+    profile.with_distance(p, 67.5)
+    assert t["buy"][0]["dist"] == 0.0 and t["buy"][1]["dist"] < 0
+
+
+def test_top_levels_empty_when_source_has_no_side():
+    s = sess({"50": [0, 0, 1000, 0, 0]}, 50)
+    p = profile.build([("2026-09-18", s, 1.0)])
+    assert p["top"] == {"buy": [], "sell": [], "big_buy": [], "big_sell": []}

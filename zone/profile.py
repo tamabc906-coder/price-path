@@ -25,6 +25,7 @@ DEFAULT_SETTINGS = {
     "buy_share_min": 0.58,
     "sell_share_max": 0.42,
     "big_lot_value_vnd": 500_000_000,
+    "top_n": 5,
 }
 # Hệ số điều chỉnh lệch dưới mức này coi như 1 (DNSE làm tròn 2 chữ số; 0,5 % còn xa mức chia cổ tức nhỏ nhất ~2 %).
 FACTOR_NOISE = 0.005
@@ -117,6 +118,37 @@ def build(sessions: list[tuple[str, dict, float]], settings: dict | None = None)
         big_mean = big_grand / n
         btag = [_tag(b[BIG_BUY], b[BIG_SELL], big_totals[i], big_mean, cfg) for i, b in enumerate(bins)]
         out["big_buy_zones"], out["big_sell_zones"] = _zones(btag, bins, big_days_in, base, w, BIG_BUY, BIG_SELL, big=True)
+    out["top"] = top_levels(pts, int(cfg["top_n"]))
+    return out
+
+
+def top_levels(pts: list[tuple[float, list[int], bool, str]], top_n: int) -> dict:
+    """Các mức giá CHÍNH XÁC (không gộp ô) có KL mua / bán chủ động lớn nhất trong khung.
+
+    Giá đã nhân hệ số điều chỉnh lệch khỏi lưới bước giá → làm tròn về bước giá của chính nó rồi mới gộp.
+    pct = phần của mức trong tổng mua (bán) chủ động khung; big_* chỉ có ở phiên tick thật.
+    """
+    lv: dict[float, list] = {}  # giá → [mua, bán, x, mua_lớn, bán_lớn, KL est, {ngày}]
+    for p, arr, est, day in pts:
+        t = tick_size(p)
+        k = round(round(p / t) * t, 4)
+        r = lv.setdefault(k, [0, 0, 0, 0, 0, 0, set()])
+        for c in range(5):
+            r[c] += int(arr[c])
+        if est:
+            r[5] += int(arr[BUY] + arr[SELL])
+        r[6].add(day)
+    out = {}
+    for key, col in (("buy", BUY), ("sell", SELL), ("big_buy", BIG_BUY), ("big_sell", BIG_SELL)):
+        side_total = sum(r[col] for r in lv.values())
+        rows = sorted(((k, r) for k, r in lv.items() if r[col] > 0), key=lambda kr: -kr[1][col])[:top_n]
+        out[key] = [{
+            "p": k, "vol": r[col],
+            "pct": round(r[col] / side_total, 4),
+            "share": round(r[BUY] / (r[BUY] + r[SELL]), 3) if r[BUY] + r[SELL] else None,
+            "sessions": len(r[6]), "last": max(r[6]),
+            "est_share": 0.0 if key.startswith("big") or not r[BUY] + r[SELL] else round(r[5] / (r[BUY] + r[SELL]), 3),
+        } for k, r in rows]
     return out
 
 
@@ -235,4 +267,7 @@ def with_distance(profile: dict, price: float | None) -> dict:
         for z in profile.get(key, []):
             mid = (z["lo"] + z["hi"]) / 2
             z["dist"] = round((mid - price) / price * 100, 2)
+    for rows in (profile.get("top") or {}).values():
+        for r in rows:
+            r["dist"] = round((r["p"] - price) / price * 100, 2)
     return profile
