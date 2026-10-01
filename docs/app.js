@@ -347,7 +347,9 @@
     out.push(`<line x1="${left}" y1="${yVal}" x2="${W - right}" y2="${yVal}" stroke="${GOLD2}" stroke-width="1" stroke-dasharray="3 2"/>`);
     out.push(`<line x1="${left}" y1="${yPoc}" x2="${W - right}" y2="${yPoc}" stroke="${GOLDC}" stroke-width="1.5"/>`);
     labs.push({ y: yVah - 2, t: `VAH ${px(bins[p.va[1]][0] + w)}`, c: GOLD2, b: false });
-    labs.push({ y: yPoc - 2, t: `POC ${px(bins[p.poc][0] + w / 2)}`, c: GOLD2, b: false });
+    // Ô rộng đúng 1 bước giá chỉ chứa một giá khớp: nhãn là giá đó (tâm ô 32,525 không giao dịch được); ô gộp nhiều bước → tâm ô
+    const pocLo = bins[p.poc][0], tk = pocLo < 10 ? 0.01 : pocLo < 50 ? 0.05 : 0.1;
+    labs.push({ y: yPoc - 2, t: `POC ${px(w <= tk + 1e-9 ? pocLo : pocLo + w / 2)}`, c: GOLD2, b: false });
     labs.push({ y: yVal + 8, t: `VAL ${px(bins[p.va[0]][0])}`, c: GOLD2, b: false });
     // Nhãn giá: ≤ 10 nhãn
     const step = Math.max(1, Math.ceil(n / 10));

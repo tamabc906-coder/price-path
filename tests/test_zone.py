@@ -193,6 +193,19 @@ def test_build_marks_estimated_share_and_distance():
     assert p["buy_zones"][0]["dist"] > 0
 
 
+def test_build_puts_every_tick_price_in_its_own_bin():
+    # TCB 18/09–01/10: 31,60…33,70 bước 0,05. floor số thực từng đẩy 27/43 mức xuống ô dưới (31,80 → ô 31,75),
+    # để lại ô rỗng giữa hai mức có KL và POC/VAL thấp 1 bước giá.
+    prices = [round(31.6 + 0.05 * k, 2) for k in range(43)]
+    levels = {f"{p:.2f}": [1000 + k, 1000, 0, 0, 0] for k, p in enumerate(prices)}
+    levels["32.55"] = [90000, 10000, 0, 0, 0]
+    p = profile.build([("2026-10-01", sess(levels, 32.55), 1.0)])
+    assert p["bin"] == 0.05 and len(p["bins"]) == len(prices)
+    for row, price in zip(p["bins"], prices):
+        assert abs(row[0] - price) < 1e-9 and row[1] + row[2] > 0
+    assert p["bins"][p["poc"]][0] == 32.55
+
+
 def test_value_area_expands_toward_bigger_neighbor():
     totals = [1, 5, 50, 10, 30, 2]
     lo, hi = profile.value_area(totals, 2, 0.7)

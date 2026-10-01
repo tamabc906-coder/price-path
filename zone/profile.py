@@ -15,6 +15,8 @@ Mỗi ô/vùng nhớ phần KL đến từ phiên ước lượng (est) để gi
 """
 from __future__ import annotations
 
+import math
+
 from .collect import BIG_BUY, BIG_SELL, BUY, OTHER, SELL
 
 DEFAULT_SETTINGS = {
@@ -33,6 +35,9 @@ DEFAULT_SETTINGS = {
 }
 # Hệ số điều chỉnh lệch dưới mức này coi như 1 (DNSE làm tròn 2 chữ số; 0,5 % còn xa mức chia cổ tức nhỏ nhất ~2 %).
 FACTOR_NOISE = 0.005
+# Dung sai khi chia giá cho bề rộng ô: 31,80 / 0,05 = 635,999… trên số thực, floor thẳng sẽ đẩy mức xuống ô dưới
+# (soát 01/10/2026: 44 % mức giá lệch 1 ô, POC/VAL/VAH thấp 1 bước giá ở 114/117 khung).
+EPS = 1e-6
 # Chỉ số cột trong mỗi ô: 5 cột như session + KL từ phiên ước lượng.
 EST = 5
 
@@ -59,7 +64,7 @@ def bin_width(lo: float, hi: float, max_bins: int) -> float:
     """Bề rộng ô = bội nhỏ nhất của bước giá sao cho số ô ≤ max_bins."""
     step = tick_size(hi)
     span = max(hi - lo, step)
-    k = max(1, int(-(-span // (step * max_bins))))  # ceil(span / (step*max_bins))
+    k = max(1, math.ceil(span / (step * max_bins) - EPS))
     return round(step * k, 4)
 
 
@@ -78,13 +83,13 @@ def build(sessions: list[tuple[str, dict, float]], settings: dict | None = None)
     lo = min(p for p, *_ in pts)
     hi = max(p for p, *_ in pts)
     w = bin_width(lo, hi, int(cfg["max_bins"]))
-    base = (lo // w) * w
-    n = int((hi - base) // w) + 1
+    base = round(math.floor(lo / w + EPS) * w, 4)
+    n = int((hi - base) / w + EPS) + 1
     bins = [[0, 0, 0, 0, 0, 0] for _ in range(n)]
     days_in: list[set[str]] = [set() for _ in range(n)]
     big_days_in: list[set[str]] = [set() for _ in range(n)]
     for p, arr, est, day in pts:
-        i = min(n - 1, int((p - base) // w))
+        i = min(n - 1, int((p - base) / w + EPS))
         b = bins[i]
         for c in range(5):
             b[c] += int(arr[c])
