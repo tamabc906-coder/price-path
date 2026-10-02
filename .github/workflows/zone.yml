@@ -64,7 +64,7 @@ jobs:
         run: |
           git config user.name "price-path-bot"
           git config user.email "price-path-bot@users.noreply.github.com"
-          git add data/zone/ docs/data/zone/
+          git add data/zone/ docs/data/zone/ data/algo/ docs/data/algo/
           if git diff --cached --quiet; then echo "không có gì mới"; exit 0; fi
           git commit -m "zone: $(date -u +%Y-%m-%d) [skip ci]"
           # job/watchlist.load() ghi lại docs/data/watchlist.json (bản chụp danh mục) — file dirty làm

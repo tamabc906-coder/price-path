@@ -850,6 +850,137 @@
   }
   $("spikeLog").addEventListener("click", (ev) => { const tr = ev.target.closest("tr[data-sdate]"); if (!tr) return; sDate = tr.dataset.sdate; renderSpike(); $("main").scrollTop = 0; });
 
+  // ---------------------------------------------------------------- Cá mập ẩn (zone/algo.py → data/algo/)
+  // Lệnh chia nhỏ nhịp đều (TWAP) + lệnh rổ trên tick 39 mã. Chỉ hiển thị, chưa đo sức dự báo giá → không push.
+  let AI = null, AN = {}, aDay = null, aOpen = null, aCh = -1;
+  const AD = {};
+  const a1 = (v) => (v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(1).replace(".", ","));
+  const a2 = (v) => v.toFixed(2).replace(".", ",");
+  const acl = (v) => (v > 0.05 ? "up" : v < -0.05 ? "down" : "");
+  const ahm = (s) => String(Math.floor(s / 3600)).padStart(2, "0") + ":" + String(Math.floor(s % 3600 / 60)).padStart(2, "0");
+  const anum = (v) => v.toLocaleString("vi-VN");
+  // 09:15–11:30 nối liền 13:00–14:30 (bỏ nghỉ trưa) = 225 phút, ATC đặt ở phút 233
+  const axm = (s) => (s >= 46800 ? 135 + (s - 46800) / 60 : (s - 33300) / 60);
+  const getJ = (u) => fetch(u, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+  async function loadAlgo() {
+    const [ix, wl] = await Promise.all([getJ("data/algo/index.json"), getJ("data/watchlist.json")]);
+    AI = ix;
+    ((wl && wl.items) || []).forEach((it) => { AN[it.symbol] = (it.company_name || "").replace(/^(Công ty Cổ phần|Ngân hàng Thương mại Cổ phần|Ngân hàng TMCP|Tổng Công ty)\s*/i, ""); });
+  }
+  async function algoDay(d) { if (!AD[d]) AD[d] = await getJ(`data/algo/${d}.json`); return AD[d]; }
+
+  function algoChart(s) {
+    const W = 340, PH = 150, T = 6, BS = PH + T + 8, H = BS + 30, L = 34, R = 4;
+    let lo = Infinity, hi = -Infinity;
+    s.c5.forEach((c) => { lo = Math.min(lo, c[3]); hi = Math.max(hi, c[2]); });
+    s.chains.forEach((c) => c.p.forEach((p) => { lo = Math.min(lo, p); hi = Math.max(hi, p); }));
+    lo = Math.min(lo, s.close); hi = Math.max(hi, s.close);
+    const pad = (hi - lo) * 0.06 || 0.1; lo -= pad; hi += pad;
+    const X = (m) => L + (W - L - R) * m / 240, Y = (p) => T + PH * (hi - p) / (hi - lo);
+    const g = [];
+    const ff = `font-family="Archivo,Arial" font-size="9"`;
+    for (let i = 0; i <= 3; i++) { const p = lo + (hi - lo) * i / 3, y = Y(p).toFixed(1); g.push(`<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${LINE}" stroke-width=".6"/><text x="${L - 3}" y="${(+y + 3).toFixed(1)}" text-anchor="end" fill="${MUTE}" ${ff}>${p.toFixed(2)}</text>`); }
+    [[33300, "9:15"], [39600, "11:00"], [46800, "13:00"], [50400, "14:00"]].forEach(([t, l]) => { const x = X(axm(t)).toFixed(1); g.push(`<text x="${x}" y="${H - 4}" text-anchor="middle" fill="${MUTE}" ${ff}>${l}</text>`); });
+    g.push(`<line x1="${X(135).toFixed(1)}" x2="${X(135).toFixed(1)}" y1="${T}" y2="${T + PH}" stroke="${LINE}" stroke-dasharray="2 3"/>`);
+    const vy = Y(s.vwap).toFixed(1);
+    g.push(`<line x1="${L}" x2="${X(225).toFixed(1)}" y1="${vy}" y2="${vy}" stroke="#3B2A6B" stroke-dasharray="4 3" stroke-width="1"/><text x="${L + 3}" y="${(vy - 3).toFixed(1)}" fill="#3B2A6B" ${ff} font-weight="700">VWAP ${s.vwap.toFixed(2)}</text>`);
+    const cw = (W - L - R) / 48 * 0.62;
+    s.c5.forEach((c) => {
+      const x = X(axm(c[0] + 150)), up = c[4] >= c[1], col = up ? UP : DOWN;
+      g.push(`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${Y(c[2]).toFixed(1)}" y2="${Y(c[3]).toFixed(1)}" stroke="${col}" stroke-opacity=".55"/>`);
+      g.push(`<rect x="${(x - cw / 2).toFixed(1)}" y="${Y(Math.max(c[1], c[4])).toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1, Math.abs(Y(c[1]) - Y(c[4]))).toFixed(1)}" fill="${up ? "#fff" : col}" stroke="${col}" stroke-opacity=".55" fill-opacity="${up ? 1 : .45}"/>`);
+    });
+    const ax = X(233);
+    g.push(`<line x1="${(ax - 6).toFixed(1)}" x2="${(ax + 6).toFixed(1)}" y1="${Y(s.close).toFixed(1)}" y2="${Y(s.close).toFixed(1)}" stroke="${GOLD}" stroke-width="3"/><text x="${ax.toFixed(1)}" y="${H - 4}" text-anchor="middle" fill="${GOLD2}" ${ff} font-weight="700">ATC</text>`);
+    s.chains.forEach((c, i) => {
+      const sel = i === aCh, col = c.side === "B" ? UP : DOWN, op = aCh < 0 || sel ? 1 : 0.25;
+      if (sel) g.push(`<polyline fill="none" stroke="${col}" stroke-width="1.4" stroke-opacity=".7" points="${c.t.map((t, k) => X(axm(t)).toFixed(1) + "," + Y(c.p[k]).toFixed(1)).join(" ")}"/>`);
+      c.t.forEach((t, k) => g.push(`<circle cx="${X(axm(t)).toFixed(1)}" cy="${Y(c.p[k]).toFixed(1)}" r="${sel ? 3.2 : 2.2}" fill="${col}" fill-opacity="${op}" stroke="#fff" stroke-width=".6"/>`));
+    });
+    g.push(`<text x="${L - 3}" y="${BS + 8}" text-anchor="end" fill="#2F6DB5" ${ff} font-weight="700">rổ</text><line x1="${L}" x2="${W - R}" y1="${BS + 5}" y2="${BS + 5}" stroke="${LINE}"/>`);
+    s.bkt.forEach(([t, side]) => { const x = X(axm(t)).toFixed(1); g.push(`<line x1="${x}" x2="${x}" y1="${side === "B" ? BS - 1 : BS + 5}" y2="${side === "B" ? BS + 5 : BS + 11}" stroke="${side === "B" ? UP : DOWN}" stroke-width="1.4"/>`); });
+    return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto" role="img" aria-label="Nến 5 phút ${esc(s.sym)} và các lệnh con thuật toán">${g.join("")}</svg>`;
+  }
+  function algoChain(c, i, s) {
+    const buy = c.side === "B", dv = 100 * (c.avg / s.vwap - 1), good = buy ? dv < 0 : dv > 0;
+    return `<button type="button" class="al-ch${i === aCh ? " on" : ""}" data-ach="${i}">
+      <span class="al-sd ${buy ? "up" : "down"}">${buy ? "▲ Mua" : "▼ Bán"}</span>
+      <span class="al-m"><b>${anum(c.size)} cp × ${c.n}</b> · ${c.step} giây/lệnh · ${ahm(c.t[0])}–${ahm(c.t[c.t.length - 1])}
+        <span class="al-s">giá TB ${c.avg.toFixed(2)} (<span class="${good ? "up" : "down"}">${a1(dv)} % so VWAP</span>)${c.waves > 1 ? ` · <span class="al-tag">${c.waves} đợt</span>` : ""}${c.carry ? ` · <span class="al-tag">tiếp từ phiên trước</span>` : ""}</span></span>
+      <span class="al-v"><b>${a2(c.val)}</b> tỷ<span class="al-s">${String(c.pct).replace(".", ",")} % GTGD</span></span></button>`;
+  }
+  function algoCard(s) {
+    const open = s.sym === aOpen, nb = s.chains.filter((c) => c.side === "B").length, ns = s.chains.length - nb;
+    const cell = (k, v) => `<div><span>${k}</span><b class="${acl(v)}">${a1(v)}</b></div>`;
+    return `<div class="card al-card${open ? " alert" : ""}">
+      <button type="button" class="al-hd" data-asym="${esc(s.sym)}" aria-expanded="${open}">
+        <div class="top"><div class="l"><h3>${esc(s.sym)}</h3><span class="name">${esc(AN[s.sym] || "")}</span></div>
+          <div class="r"><span class="px">${px(s.close)}</span> ${s.chg == null ? "" : `<span class="chg ${acl(s.chg)}">${a1(s.chg)} %</span>`}</div></div>
+        <div class="al-n">${nb ? `<span class="up">▲ ${nb} chuỗi mua</span>` : ""}${nb && ns ? " · " : ""}${ns ? `<span class="down">▼ ${ns} chuỗi bán</span>` : ""}<span class="al-more">${open ? "Thu gọn" : "Xem lệnh con"}</span></div>
+        <div class="al-s" style="margin:0">tỷ đồng, ròng mua − bán</div>
+        <div class="al-cells">${cell("Thuật toán", s.algo)}${cell("CM ≥500tr", s.whale)}${cell("Rổ", s.bk)}${cell("Tổng hợp", s.comb)}</div>
+      </button>
+      ${open ? `<div class="al-body">${algoChart(s)}
+        <div class="al-lg"><span><i style="background:${UP}"></i>lệnh con mua</span><span><i style="background:${DOWN}"></i>lệnh con bán</span><span><i style="background:#3B2A6B"></i>VWAP</span><span><i style="background:${GOLD}"></i>giá ATC</span></div>
+        <div class="al-chs">${s.chains.map((c, i) => algoChain(c, i, s)).join("")}</div>
+        <div class="al-s">Bấm một chuỗi để nối các lệnh con trên biểu đồ. Vạch dưới đáy là lệnh của mã này khớp cùng giây với lệnh rổ.</div></div>` : ""}
+    </div>`;
+  }
+  function algoBaskets(v) {
+    const B = v.baskets, by = {};
+    const slots = []; for (let t = 33300; t < 41400; t += 900) slots.push(t); for (let t = 46800; t < 52200; t += 900) slots.push(t);
+    v.stocks.forEach((s) => { if (!s.bkt.length) return; const row = slots.map(() => 0); s.bkt.forEach(([t, side, tr]) => { const i = slots.findIndex((x) => t >= x && t < x + 900); if (i >= 0) row[i] += side === "B" ? tr : -tr; }); by[s.sym] = { row, n: s.bkt.length }; });
+    const syms = Object.keys(by).sort((a, b) => by[b].n - by[a].n);
+    const mx = Math.max(1, ...syms.flatMap((m) => by[m].row.map(Math.abs)));
+    const bg = (x) => (!x ? "transparent" : `rgba(${x > 0 ? "46,125,79" : "184,74,58"},${Math.min(1, .12 + .8 * Math.sqrt(Math.abs(x) / mx)).toFixed(2)})`);
+    const top = [...B].sort((a, b) => b.val - a.val).slice(0, 10);
+    return `<details class="box al-det"><summary>Lệnh rổ phiên ${dmy(v.day)} · ${B.length} lần</summary>
+      <p>Một giây có từ ${AI.rule.bk_syms} mã trở lên trong danh mục cùng bị mua (hoặc cùng bị bán) chủ động, mỗi lệnh ≥ ${AI.rule.bk_tr} tr. Thường là quỹ ETF hoặc giao dịch chênh lệch với phái sinh VN30F đặt cả rổ một lúc: tiền đi theo chỉ số, không nhắm riêng mã nào.</p>
+      ${syms.length ? `<div class="scroll"><table class="al-hm"><thead><tr><th></th>${slots.map((t) => `<th>${ahm(t)}</th>`).join("")}</tr></thead><tbody>
+        ${syms.map((m) => `<tr><td>${esc(m)}</td>${by[m].row.map((x) => `<td style="background:${bg(x)}" title="${esc(m)} ${x > 0 ? "+" : ""}${x} tr"></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+        <p class="al-s">Xanh = rổ mua, đỏ = rổ bán, đậm theo giá trị mỗi 15 phút.</p>` : ""}
+      ${top.length ? `<div class="tbl" style="margin:0"><table><thead><tr><th>Giờ</th><th style="text-align:left">Phía</th><th>Mã</th><th>Tỷ đ</th></tr></thead><tbody>
+        ${top.map((b) => `<tr><td>${ahm(b.t)}:${String(b.t % 60).padStart(2, "0")}</td><td class="${b.side === "B" ? "up" : "down"}" style="text-align:left">${b.side === "B" ? "▲ Mua" : "▼ Bán"}</td><td style="white-space:normal;font-weight:400;font-size:11.5px">${esc(b.m.join(" "))}</td><td>${a2(b.val)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    </details>`;
+  }
+  function algoHow() {
+    const r = AI.rule;
+    const rows = AI.days.map((d) => `<tr><td>${dmy(d.day)}</td><td>${d.nsym}</td><td>${d.test.ch_real}</td><td>${String(d.test.ch_fake).replace(".", ",")}</td><td>${d.test.bk_real}</td><td>${d.test.bk_fake}</td></tr>`).join("");
+    return `<details class="box al-det"><summary>Cách đọc và kiểm định</summary>
+      <p>Tổ chức ít khi đặt một lệnh lớn. Họ giao cho máy cắt nhỏ, mỗi lệnh con 100–300 tr, bắn đều theo nhịp (TWAP). Ngưỡng cá mập ≥ ${r.whale_tr} tr/lệnh bỏ sót các lệnh con này nên chúng bị tính là nhỏ lẻ.</p>
+      <p><b>Cách dò:</b> gộp các tick cùng giây, cùng phía thành một lệnh. Chuỗi là các lệnh cùng phía, cùng khối lượng chính xác (≥ ${anum(r.size)} cp), hai lệnh liền nhau cách ≤ ${r.gap} giây. Giữ chuỗi có ≥ ${r.n} lệnh và nhịp đều (độ lệch chuẩn khoảng cách / trung bình &lt; ${String(r.cv).replace(".", ",")}).</p>
+      <p><b>Tổng hợp</b> = cá mập ≥ ${r.whale_tr} tr + lệnh con của chuỗi, trừ phần khớp trong giây có lệnh rổ.</p>
+      <p><b>Kiểm định:</b> xáo ngẫu nhiên phía và khối lượng giữa các lệnh trong ngày (giữ nguyên thời điểm, 5 lần); với rổ, dịch giờ mỗi mã ±30 phút. Số "xáo" là mức trùng hợp.</p>
+      <div class="tbl" style="margin:0"><table><thead><tr><th>Phiên</th><th>Mã</th><th>Chuỗi</th><th>Xáo</th><th>Rổ</th><th>Dịch giờ</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="warn">Chưa đo được sức dự báo giá — cần ≥ 60 phiên. Đây là bản đồ dòng tiền, không phải tín hiệu mua bán. Thuật toán đổi cỡ lệnh ngẫu nhiên hoặc đặt theo % khối lượng sẽ lọt.</p>
+    </details>`;
+  }
+  async function renderAlgo() {
+    if (!AI) await loadAlgo();
+    if (!AI || !AI.days || !AI.days.length) { $("algoStrip").innerHTML = "<b>Chưa có dữ liệu.</b> Job vùng giá sau phiên chưa chạy bản có Cá mập ẩn."; return; }
+    const days = AI.days.map((d) => d.day);
+    if (!aDay || !days.includes(aDay)) aDay = days[days.length - 1];
+    const v = await algoDay(aDay);
+    if (!v) { $("algoStrip").innerHTML = `<b>Không tải được phiên ${dmy(aDay)}.</b>`; return; }
+    $("algoKicker").textContent = `phiên ${dmy(aDay)}`;
+    const withCh = v.stocks.filter((s) => s.chains.length), nch = withCh.reduce((a, s) => a + s.chains.length, 0);
+    const net = withCh.reduce((a, s) => a + s.algo, 0), t = v.test;
+    $("algoStrip").innerHTML = nch
+      ? `<b>Phiên ${dmy(aDay)}: ${nch} chuỗi thuật toán ở ${withCh.length} mã</b>, ròng <b class="${acl(net)}">${a1(net)} tỷ</b> · ${t.bk_real} giây có lệnh rổ. Mức trùng hợp: ${String(t.ch_fake).replace(".", ",")} chuỗi.`
+      : `<b>Phiên ${dmy(aDay)}: không có chuỗi thuật toán nào.</b> ${t.bk_real} giây có lệnh rổ.`;
+    $("algoDays").innerHTML = `<span class="k">Phiên</span>` + days.slice().reverse().map((d) => `<button type="button" data-aday="${d}" aria-pressed="${d === aDay}">${dmy(d)}</button>`).join("");
+    const rest = v.stocks.filter((s) => !s.chains.length).map((s) => s.sym);
+    $("algoCards").innerHTML = withCh.map(algoCard).join("")
+      + (rest.length ? `<div class="al-rest">Không có chuỗi: ${esc(rest.join(", "))}</div>` : "");
+    $("algoMore").innerHTML = algoBaskets(v) + algoHow();
+  }
+  $("p-algo").addEventListener("click", (ev) => {
+    const d = ev.target.closest("[data-aday]"); if (d) { aDay = d.dataset.aday; aOpen = null; aCh = -1; renderAlgo(); return; }
+    const c = ev.target.closest("[data-ach]"); if (c) { const i = +c.dataset.ach; aCh = aCh === i ? -1 : i; renderAlgo(); return; }
+    const h = ev.target.closest("[data-asym]"); if (h) { aOpen = aOpen === h.dataset.asym ? null : h.dataset.asym; aCh = -1; renderAlgo(); }
+  });
+
   // ---------------------------------------------------------------- Cài đặt
   function renderSettings() {
     if (D) {
@@ -857,7 +988,7 @@
       const em = evMeta(), en = em.enabled || [], pu = em.push || [];
       const evRows = Object.entries(em.stats || {}).map(([k, v]) => `<tr><td>${esc(v.name)}</td><td>${spc(v.ex10)}</td><td>${v.years_win}/${v.years}</td><td>${v.scale ? Number(v.scale["80"]).toFixed(2) : "—"}</td><td class="c">${!v.pass ? `<span style="color:${MUTE}">trượt</span>` : pu.includes(k) ? `<span class="pill on">push</span>` : en.includes(k) ? `<span class="pill n">chỉ hiện</span>` : `<span class="pill off">tắt</span>`}</td></tr>`).join("");
       // 25/09/2026: chuông chuyển sang vùng giá + cá mập (zone/alerts.py); push sự kiện chỉ còn nếu events_push khác rỗng
-      $("pushHelp").innerHTML = `Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá. <br><b>Chuông KL đột biến</b> (~15:40, job sau phiên): mã có KL ≥ 2× TB 20 phiên trước, nến xanh, giá tăng ≥ 3 %. Quá 6 mã → một thông báo gộp. Bấm mở tab KL đột biến.${pu.length ? ` Kèm sự kiện đang bật push: ${esc(pu.map((k) => (em.stats[k] && em.stats[k].name) || k).join(", "))}.` : ""}`;
+      $("pushHelp").innerHTML = `Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá. <br><b>Chuông KL đột biến</b> (~15:40, job sau phiên): mã có KL ≥ 2× TB 20 phiên trước, nến xanh, giá tăng ≥ 3 %. Quá 6 mã → một thông báo gộp. Bấm mở tab KL đột biến. <br><b>Tab Cá mập ẩn</b> (lệnh chia nhỏ nhịp đều + lệnh rổ, dựng cùng job vùng giá ~15:50) chỉ để xem, không gửi thông báo.${pu.length ? ` Kèm sự kiện đang bật push: ${esc(pu.map((k) => (em.stats[k] && em.stats[k].name) || k).join(", "))}.` : ""}`;
       $("thresholds").innerHTML = `<div class="l"><span>Chuông điện thoại</span><span class="pill on">vùng giá + cá mập</span></div>
         <div class="l"><span>Push theo sự kiện</span><span class="pill ${pu.length ? "on" : "off"}">${pu.length ? "bật" : "tắt"}</span></div>
         <div class="tbl" style="margin:6px 0 4px;padding:6px 0 0"><table><thead><tr><th>Sự kiện</th><th>Vượt 10p</th><th>Năm</th><th>Nới 80 %</th><th style="text-align:center">Trạng thái</th></tr></thead><tbody>${evRows}</tbody></table>
@@ -992,11 +1123,12 @@
     if (name === "chart") renderChart();
     if (name === "zone") renderZone();
     if (name === "spike") renderSpike();
+    if (name === "algo") renderAlgo();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|spike|settings)$/ : /^#(zone|spike|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
+  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|spike|algo|settings)$/ : /^#(zone|spike|algo|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } if ($("p-spike").classList.contains("on")) { SP = null; renderSpike(); } } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } if ($("p-spike").classList.contains("on")) { SP = null; renderSpike(); } if ($("p-algo").classList.contains("on")) { AI = null; for (const k in AD) delete AD[k]; renderAlgo(); } } });
 })();

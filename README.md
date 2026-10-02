@@ -103,6 +103,19 @@ venv\Scripts\python -m scripts.zone_check_sources FPT   # đối chiếu Mua/Bá
   tô nhạt, ghi `n_thật/n`. Phiên thật không bao giờ bị ghi đè.
 - Chưa có push, chưa đo giá trị dự báo của vùng — thống kê mô tả. Ngưỡng ở `docs/data/zone/settings.json`.
 
+## Cá mập ẩn — `zone/algo.py` (thêm 03/10/2026)
+
+Tab "Cá mập ẩn": dò **lệnh chia nhỏ nhịp đều (TWAP)** và **lệnh rổ** trên chính tick 39 mã mà job zone tải lúc
+15:50 (không gọi thêm nguồn). Chuỗi = ≥ 8 lệnh cùng phía, cùng KL chính xác (≥ 500 cp), cách ≤ 180 s, CV khoảng
+cách < 0,3. Rổ = ≥ 5 mã cùng phía cùng giây, mỗi lệnh ≥ 100 tr (bỏ 09:15:00, 13:00:00). Nghiên cứu ở
+`c:\Claude codelgo-radar-lab`: 39 mã × 4 phiên, chuỗi 92 thật vs 2,8 khi xáo phía/KL; rổ 162 vs 2 khi dịch giờ.
+**Chưa đo sức dự báo giá** (cần ≥ 60 phiên) → chỉ hiển thị, không push.
+
+- Kho `data/algo/<ngày>.json` (60 phiên, ghi theo từng mã trong vòng gom) → `docs/data/algo/index.json` +
+  `<ngày>.json` (20 phiên). Lỗi ở phần này chỉ ghi log, không chặn vùng giá.
+- Mồi từ tick tải tay: `venv\Scripts\python -m scripts.algo_seed [thư mục]` (khuôn Release order-flow-live).
+- Dựng lại trang: `python -m zone.run_daily --rebuild`.
+
 ## Bẫy đã gặp, đừng dẫm lại (thừa kế từ candle-radar / KingStock)
 
 1. DNSE trả nến hôm nay dừng giữa phiên (~13:45) với HTTP 200 → chỉ tin nến hôm nay khi chuỗi nến 1' đã có

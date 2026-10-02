@@ -23,7 +23,7 @@ from common.vndirect import VndirectClient
 from common import vndirect
 from job import watchlist
 
-from . import alerts, backfill, collect, profile, store
+from . import alerts, algo, backfill, collect, profile, store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("zone.job")
@@ -163,7 +163,9 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
             if target and store.has_real(st, target) and not force:
                 skipped.append(sym)
                 continue
-            got = collect.collect(vc, sym, int(cfg["big_lot_value_vnd"]))
+            raw: dict = {}
+            got = collect.collect(vc, sym, int(cfg["big_lot_value_vnd"]),
+                                  on_ticks=lambda d, t: raw.update(day=d, ticks=t))
             if got is None:
                 failed.append(sym)
                 continue
@@ -179,6 +181,7 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
                     st["sessions"][day] = sess
                 if not dry_run:
                     store.save(st)
+                    _algo_put(sym, raw)
                 collected.append(f"{sym}@{day}")
                 log.info("%s: ghi phiên thật %s (%s tick, %s cp)", sym, day, f"{sess['ticks']:,}", f"{sess['total']:,}")
             else:
@@ -226,6 +229,11 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
                   f"mua {len(p.get('buy_zones', []))} vùng  bán {len(p.get('sell_zones', []))} vùng")
         return 0
     _dump(LATEST, latest)
+    try:    # Cá mập ẩn: lỗi ở đây không được làm hỏng vùng giá đã ghi
+        n = algo.build_site({sym: closes_of(h, sym) for sym in symbols})
+        log.info("Cá mập ẩn: dựng %d phiên", n)
+    except Exception:  # noqa: BLE001
+        log.exception("Dựng trang cá mập ẩn lỗi")
     if not rebuild:     # dựng lại từ kho không gom gì — giữ nguyên nhật ký lượt gom thật gần nhất
         state = _state(now, src, collected, skipped, failed, warnings, wrote=True)
         try:
@@ -237,6 +245,16 @@ def run(force: bool = False, dry_run: bool = False, only: list[str] | None = Non
     log.info("Ghi %s: %d mã, phiên %s; mới %d, bỏ qua %d, lỗi %d", LATEST.name, len(symbols), trade_date,
              len(collected), len(skipped), len(failed))
     return 0 if not failed else 1
+
+
+def _algo_put(sym: str, raw: dict) -> None:
+    """Dò chuỗi thuật toán trên tick vừa tải (zone/algo.py) → data/algo/<ngày>.json. Lỗi chỉ ghi log."""
+    if not raw.get("ticks"):
+        return
+    try:
+        algo.put(raw["day"], sym, algo.symbol_day(raw["ticks"]))
+    except Exception:  # noqa: BLE001
+        log.exception("%s: dò cá mập ẩn lỗi", sym)
 
 
 def _state(now, src, collected, skipped, failed, warnings, wrote: bool) -> dict:

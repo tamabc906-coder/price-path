@@ -81,12 +81,18 @@ def aggregate(ticks: list[dict], big_value_vnd: int = BIG_LOT_VALUE_VND) -> dict
     return out
 
 
-def collect(client: VndirectClient, symbol: str, big_value_vnd: int = BIG_LOT_VALUE_VND) -> tuple[str, dict] | None:
-    """(ngày phiên ISO, session) của phiên gần nhất trên VNDirect; None nếu nguồn lỗi/rỗng."""
+def collect(client: VndirectClient, symbol: str, big_value_vnd: int = BIG_LOT_VALUE_VND,
+            on_ticks=None) -> tuple[str, dict] | None:
+    """(ngày phiên ISO, session) của phiên gần nhất trên VNDirect; None nếu nguồn lỗi/rỗng.
+
+    on_ticks(ngày, ticks): nhận tick thô trước khi bị bỏ (zone/algo.py dò lệnh chia nhỏ trên chính lượt gọi này).
+    """
     ticks = client.latest_session(symbol)
     if not ticks:
         return None
     sess = aggregate(ticks, big_value_vnd)
+    if on_ticks is not None:
+        on_ticks(ticks[-1]["date"], ticks)
     return ticks[-1]["date"], sess
 
 
