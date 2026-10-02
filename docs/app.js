@@ -121,7 +121,12 @@
   }
 
   // ---------------------------------------------------------------- tải dữ liệu
+  // 02/10/2026: ẩn 3 tab Hôm nay / Biểu đồ / Sổ chấm — app chỉ còn Vùng giá + Cài đặt, không tải
+  // latest.json + bars.json lúc mở. Job daily (15:40) VẪN PHẢI CHẠY: nó ghi data/history.json mà zone.yml cần.
+  // Bật lại: LEGACY = true và bỏ `hidden` ở 3 nút nav + 2 thẻ Cài đặt trong index.html.
+  const LEGACY = false;
   async function load() {
+    if (!LEGACY) { renderSettings(); return; }
     try {
       const [r1, r2] = await Promise.all([fetch("data/latest.json", { cache: "no-cache" }), fetch("data/bars.json", { cache: "no-cache" })]);
       if (!r1.ok) throw new Error("Chưa có data/latest.json — job sau phiên chưa chạy lần nào.");
@@ -828,10 +833,12 @@
         // nghĩa là job vùng giá chưa chốt được phiên gần nhất — đúng dấu hiệu của sự cố 23/09/2026.
         const ran = (zs.ran_at || "").slice(0, 10);
         // D có thể còn null (khối này nằm ngoài guard ở trên, latest.json tải xong sau) — không so thì thôi.
-        const behind = ran && D && D.trade_date && ran < D.trade_date;
+        // Không tải latest.json (LEGACY tắt) thì lấy phiên của job daily từ data/state.json.
+        const td = (D && D.trade_date) || (st && st.last_trade_date) || "";
+        const behind = ran && td && ran < td;
         const nf = (zs.failed || []).length, nw = (zs.warnings || []).length;
         let z = `Job vùng giá ${ran ? esc(zs.ran_at.slice(0, 16).replace("T", " ")) : "—"}`;
-        z += behind ? ` · <b style="color:${DOWN}">chậm: phiên gần nhất là ${dmy(D.trade_date)}</b>` : ` · ${zs.collected ? zs.collected.length : 0} mã`;
+        z += behind ? ` · <b style="color:${DOWN}">chậm: phiên gần nhất là ${dmy(td)}</b>` : ` · ${zs.collected ? zs.collected.length : 0} mã`;
         if (nf) z += ` · <b style="color:${DOWN}">lỗi ${nf} mã: ${esc((zs.failed || []).slice(0, 5).join(", "))}</b>`;
         if (zs.vndirect_last_error) z += ` · <b style="color:${DOWN}">${esc(zs.vndirect_last_error)}</b>`;
         if (nw) z += ` · ${nw} cảnh báo: ${esc(zs.warnings[0])}`;
@@ -916,7 +923,7 @@
     if (name === "zone") renderZone();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = /^#(today|history|chart|zone|settings)$/.exec(location.hash); switchTab(m ? m[1] : "zone"); }
+  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|settings)$/ : /^#(zone|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });

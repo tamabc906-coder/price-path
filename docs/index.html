@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -164,7 +164,7 @@
   <section class="panel" id="p-settings" role="tabpanel">
     <div class="head">
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Cài đặt</div></div><span class="kicker">v1</span></div>
-      <div class="sub">Thông báo · cổng máy học · tham số nón · hệ thống</div>
+      <div class="sub">Thông báo · hệ thống</div>
     </div>
     <div class="sec"><div class="card info">
       <h3>01 · Thông báo điện thoại</h3>
@@ -174,23 +174,23 @@
       <div class="more" id="pushHelp">Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá.</div>
       <div class="srow" id="thresholds"></div>
     </div></div>
-    <div class="sec"><div class="card"><h3>02 · Lớp máy học (LightGBM) — xác suất hướng</h3><div id="gateBody"></div></div></div>
-    <div class="sec"><div class="card"><h3>03 · Nón</h3><div id="coneParams"></div></div></div>
-    <div class="sec"><div class="card"><h3>04 · Hệ thống</h3><div class="state" id="sysBody">—</div><div class="state" id="stateFoot"></div></div></div>
+    <div class="sec" hidden><div class="card"><h3>02 · Lớp máy học (LightGBM) — xác suất hướng</h3><div id="gateBody"></div></div></div>
+    <div class="sec" hidden><div class="card"><h3>03 · Nón</h3><div id="coneParams"></div></div></div>
+    <div class="sec"><div class="card"><h3>04 · Hệ thống</h3><div class="state" id="sysBody" hidden>—</div><div class="state" id="stateFoot"></div></div></div>
     <div class="foot">Nón là thống kê quá khứ theo chế độ hiện tại, chưa trừ phí; không phải khuyến nghị. 39 mã là danh mục chọn hôm nay nên mọi thống kê lịch sử có thiên lệch sống sót. <a href="./" id="reload">Tải lại app</a></div>
   </section>
 </main>
 
 <nav role="tablist" aria-label="Điều hướng">
   <button role="tab" aria-selected="true" data-tab="zone"><svg><use href="#i-zone"/></svg><span>Vùng giá</span></button>
-  <button role="tab" aria-selected="false" data-tab="today"><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
-  <button role="tab" aria-selected="false" data-tab="chart"><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
-  <button role="tab" aria-selected="false" data-tab="history"><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
+  <button role="tab" aria-selected="false" data-tab="today" hidden><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
+  <button role="tab" aria-selected="false" data-tab="chart" hidden><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
+  <button role="tab" aria-selected="false" data-tab="history" hidden><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
   <button role="tab" aria-selected="false" data-tab="settings"><svg><use href="#i-settings"/></svg><span>Cài đặt</span></button>
 </nav>
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
