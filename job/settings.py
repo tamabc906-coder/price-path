@@ -25,6 +25,10 @@ DEFAULTS = {
     "heartbeat": False,        # nhịp tim thứ Hai
     "history_days": 30,        # số phiên hiện ở tab Lịch sử
     "scenarios": True,         # tính 2 kịch bản A/B
+    # KL đột biến (job/volspike.py, 02/10/2026): KL ≥ mult × TB20 phiên trước + nến xanh + tăng ≥ min_pct
+    "spike_vol_mult": 2.0,
+    "spike_min_pct": 0.03,
+    "spike_push": True,
 }
 
 LOCAL = SITE_DATA / "settings.json"

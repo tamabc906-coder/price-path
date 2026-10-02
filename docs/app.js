@@ -780,6 +780,76 @@
       <div class="note">Số % = bao nhiêu mã có giá thật nằm trong nón 80 % đã vẽ 5 / 10 phiên trước. Nón vẽ hôm nay phải chờ 10 phiên nữa mới chấm được ("—").</div>`;
   }
 
+  // ---------------------------------------------------------------- KL đột biến (job/volspike.py → data/spike.json)
+  let SP = null, sDate = null;
+  const spc1 = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + (v * 100).toFixed(1).replace(".", ",") + " %");
+  const xr = (r) => r.toFixed(1).replace(".", ",") + "×";
+  const vtxt = (v) => (v >= 1e6 ? (v / 1e6).toFixed(1).replace(".", ",") + " tr" : Math.round(v / 1e3) + " k");
+  async function loadSpike() {
+    try {
+      const r = await fetch("data/spike.json", { cache: "no-cache" });
+      if (!r.ok) throw new Error("Chưa có data/spike.json — job sau phiên chưa chạy bản có KL đột biến.");
+      SP = await r.json();
+    } catch (err) { $("spikeStrip").innerHTML = `<b>Chưa có dữ liệu.</b> ${esc(err.message)}`; SP = null; }
+  }
+  function spikeChart(h) {
+    const all = h.bars, at = h.at, s0 = Math.max(0, at - 29), bars = all.slice(s0);
+    const W = 340, PH = 96, VH = 38, G = 6, Hh = PH + G + VH + 4, n = bars.length, bw = W / n;
+    let lo = Infinity, hi = -Infinity, vmax = 0;
+    const avg = bars.map((_, k) => { const i = s0 + k; if (i < 20) return null; let t = 0; for (let j = i - 20; j < i; j++) t += all[j][5]; return t / 20; });
+    bars.forEach((b, k) => { lo = Math.min(lo, b[3]); hi = Math.max(hi, b[2]); vmax = Math.max(vmax, b[5], avg[k] || 0); });
+    const span = (hi - lo) || 1; lo -= span * .06; hi += span * .06;
+    const y = (v) => (hi - v) / (hi - lo) * PH, vy = (v) => PH + G + VH - v / (vmax || 1) * VH, x = (k) => (k + .5) * bw, cw = Math.max(1.5, bw * .62);
+    const g = [];
+    const hk = at - s0;
+    g.push(`<rect x="${(hk * bw).toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${Hh}" fill="${GOLD}" fill-opacity="0.22"/>`);
+    if (hk < n - 1) g.push(`<line x1="${((hk + 1) * bw).toFixed(1)}" y1="0" x2="${((hk + 1) * bw).toFixed(1)}" y2="${Hh}" stroke="${LINE}" stroke-dasharray="3 3"/>`);
+    bars.forEach((b, k) => {
+      const col = b[4] >= b[1] ? UP : DOWN, xx = x(k).toFixed(1), top = y(Math.max(b[1], b[4])), hh = Math.max(1, Math.abs(y(b[1]) - y(b[4])));
+      g.push(`<line x1="${xx}" y1="${y(b[2]).toFixed(1)}" x2="${xx}" y2="${y(b[3]).toFixed(1)}" stroke="${col}"/>`);
+      g.push(`<rect x="${(x(k) - cw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${cw.toFixed(1)}" height="${hh.toFixed(1)}" fill="${b[4] >= b[1] ? "#fff" : col}" stroke="${col}"/>`);
+      const r = avg[k] ? b[5] / avg[k] : 1;
+      g.push(`<rect x="${(x(k) - cw / 2).toFixed(1)}" y="${vy(b[5]).toFixed(1)}" width="${cw.toFixed(1)}" height="${(PH + G + VH - vy(b[5])).toFixed(1)}" fill="${r >= 2 ? DOWN : "#C9BFA9"}"/>`);
+    });
+    const pts = avg.map((a, k) => (a ? `${x(k).toFixed(1)},${vy(a).toFixed(1)}` : null)).filter(Boolean);
+    if (pts.length > 1) g.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#2F6DB5" stroke-width="1.5"/>`);
+    g.push(`<text x="2" y="${PH + G + 9}" font-size="9" fill="#2F6DB5" font-family="Archivo,Arial" font-weight="700">TB20 KL</text>`);
+    return `<svg viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto" role="img" aria-label="30 phiên quanh phiên đột biến">${g.join("")}</svg>`;
+  }
+  function spikeCard(h) {
+    const fw = [5, 10].map((k) => `<span>+${k}p <b style="color:${h["r" + k] == null ? MUTE : h["r" + k] >= 0 ? UP : DOWN}">${h["r" + k] == null ? "chưa tới" : spc1(h["r" + k])}</b></span>`).join(" · ");
+    return `<div class="card">
+      <div class="top"><div class="l"><h3>${esc(h.symbol)}</h3><span class="name">${esc((h.name || "").replace(/^(Công ty Cổ phần|Ngân hàng TMCP|Tổng Công ty)\s*/i, ""))}</span></div>
+        <div class="r"><span class="px">${px(h.close)}</span><span class="chg" style="color:${UP}">${spc1(h.pct)}</span></div></div>
+      <div style="font-size:12.5px">KL <b>${vtxt(h.vol)}</b> = <b style="color:${DOWN}">${xr(h.ratio)}</b> TB20 (${vtxt(h.avg20)}) · nến xanh · phiên ${dmy(h.date)}</div>
+      ${spikeChart(h)}
+      <div style="font-size:12px;color:${MUTE}">Sau đó: ${fw}</div></div>`;
+  }
+  async function renderSpike() {
+    if (!SP) await loadSpike();
+    if (!SP) return;
+    const log = SP.log || [], rule = SP.rule || {};
+    $("spikeKicker").textContent = `phiên ${dmy(SP.trade_date)}`;
+    $("spikeSub").textContent = `KL ≥ ${String(rule.vol_mult).replace(".", ",")}× TB ${rule.avg_n} phiên trước · nến xanh · giá tăng ≥ ${Math.round(rule.min_pct * 100)} %`;
+    if (!sDate) sDate = (SP.today || []).length ? SP.trade_date : (log[0] && log[0].date) || SP.trade_date;
+    const sel = log.filter((h) => h.date === sDate).sort((a, b) => b.pct - a.pct);
+    const nToday = (SP.today || []).length;
+    $("spikeStrip").innerHTML = nToday
+      ? `<b>Phiên ${dmy(SP.trade_date)}: ${nToday} mã KL đột biến</b> — ${esc(SP.today.map((h) => h.symbol).join(", "))}.${SP.push && SP.push.sent ? " Đã báo điện thoại." : ""}`
+      : `<b>Phiên ${dmy(SP.trade_date)}: không có mã nào đạt.</b> ${sDate !== SP.trade_date ? `Dưới đây là phiên gần nhất có đột biến (${dmy(sDate)}).` : ""}`;
+    $("spikeCards").innerHTML = sel.length ? `<div class="kicker" style="margin:0 2px">Phiên ${dmy(sDate)} · ${sel.length} mã</div>` + sel.map(spikeCard).join("") : "";
+    const done = (k) => log.filter((h) => h["r" + k] != null);
+    const avg = (k) => { const xs = done(k); return xs.length ? xs.reduce((a, h) => a + h["r" + k], 0) / xs.length : null; };
+    const upn = (k) => { const xs = done(k); return xs.length ? `${xs.filter((h) => h["r" + k] > 0).length}/${xs.length} tăng` : ""; };
+    const cell = (v) => `<td class="${v == null ? "" : v >= 0 ? "up" : "down"}">${v == null ? "—" : spc1(v)}</td>`;
+    const rows = log.map((h) => `<tr data-sdate="${esc(h.date)}" style="cursor:pointer${h.date === sDate ? ";background:var(--strip)" : ""}"><td>${dmy(h.date)}</td><td class="l"><b>${esc(h.symbol)}</b></td><td class="up">${spc1(h.pct)}</td><td>${xr(h.ratio)}</td>${cell(h.r5)}${cell(h.r10)}</tr>`).join("");
+    $("spikeLog").innerHTML = `<h4>Nhật ký ${rule.log_days || 60} phiên · ${log.length} lần <span class="n">— bấm một dòng để xem phiên đó</span></h4>
+      <table class="wide mkt"><thead><tr><th>Phiên</th><th style="text-align:left">Mã</th><th>Tăng</th><th>× KL</th><th>+5p</th><th>+10p</th></tr></thead><tbody>
+      ${log.length ? `<tr class="sum"><td colspan="4">Trung bình</td>${cell(avg(5))}${cell(avg(10))}</tr>` : ""}${rows || `<tr><td colspan="6">Chưa có lần nào.</td></tr>`}</tbody></table>
+      ${log.length ? `<div class="note">+5p: ${upn(5)} · +10p: ${upn(10)}. Ít mẫu (${rule.log_days || 60} phiên, 39 mã cùng lên xuống theo thị trường) — chỉ để tham khảo, chưa phải phép đo lợi thế.</div>` : ""}`;
+  }
+  $("spikeLog").addEventListener("click", (ev) => { const tr = ev.target.closest("tr[data-sdate]"); if (!tr) return; sDate = tr.dataset.sdate; renderSpike(); $("main").scrollTop = 0; });
+
   // ---------------------------------------------------------------- Cài đặt
   function renderSettings() {
     if (D) {
@@ -787,7 +857,7 @@
       const em = evMeta(), en = em.enabled || [], pu = em.push || [];
       const evRows = Object.entries(em.stats || {}).map(([k, v]) => `<tr><td>${esc(v.name)}</td><td>${spc(v.ex10)}</td><td>${v.years_win}/${v.years}</td><td>${v.scale ? Number(v.scale["80"]).toFixed(2) : "—"}</td><td class="c">${!v.pass ? `<span style="color:${MUTE}">trượt</span>` : pu.includes(k) ? `<span class="pill on">push</span>` : en.includes(k) ? `<span class="pill n">chỉ hiện</span>` : `<span class="pill off">tắt</span>`}</td></tr>`).join("");
       // 25/09/2026: chuông chuyển sang vùng giá + cá mập (zone/alerts.py); push sự kiện chỉ còn nếu events_push khác rỗng
-      $("pushHelp").innerHTML = `Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá.${pu.length ? ` Kèm sự kiện đang bật push: ${esc(pu.map((k) => (em.stats[k] && em.stats[k].name) || k).join(", "))}.` : ""}`;
+      $("pushHelp").innerHTML = `Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá. <br><b>Chuông KL đột biến</b> (~15:40, job sau phiên): mã có KL ≥ 2× TB 20 phiên trước, nến xanh, giá tăng ≥ 3 %. Quá 6 mã → một thông báo gộp. Bấm mở tab KL đột biến.${pu.length ? ` Kèm sự kiện đang bật push: ${esc(pu.map((k) => (em.stats[k] && em.stats[k].name) || k).join(", "))}.` : ""}`;
       $("thresholds").innerHTML = `<div class="l"><span>Chuông điện thoại</span><span class="pill on">vùng giá + cá mập</span></div>
         <div class="l"><span>Push theo sự kiện</span><span class="pill ${pu.length ? "on" : "off"}">${pu.length ? "bật" : "tắt"}</span></div>
         <div class="tbl" style="margin:6px 0 4px;padding:6px 0 0"><table><thead><tr><th>Sự kiện</th><th>Vượt 10p</th><th>Năm</th><th>Nới 80 %</th><th style="text-align:center">Trạng thái</th></tr></thead><tbody>${evRows}</tbody></table>
@@ -921,11 +991,12 @@
     $("main").scrollTop = 0;
     if (name === "chart") renderChart();
     if (name === "zone") renderZone();
+    if (name === "spike") renderSpike();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|settings)$/ : /^#(zone|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
+  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|spike|settings)$/ : /^#(zone|spike|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } if ($("p-spike").classList.contains("on")) { SP = null; renderSpike(); } } });
 })();

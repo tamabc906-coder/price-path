@@ -149,6 +149,29 @@ def digest_payload(items: list[dict], trade_date: str, mode: str = "p10") -> dic
     return {"kind": "digest", "title": title, "body": " · ".join(parts), "url": "./#today", "tag": "pp-digest", "hot": True}
 
 
+def _x(r: float) -> str:
+    return f"{r:.1f}×".replace(".", ",")
+
+
+def _vol(v: float) -> str:
+    return f"{v / 1e6:.1f} tr".replace(".", ",") if v >= 1e6 else f"{round(v / 1e3)} k"
+
+
+def spike_payload(h: dict, trade_date: str) -> dict:
+    """KL đột biến (job/volspike.py) — một mã."""
+    return {
+        "kind": "spike", "title": f"🔥 {h['symbol']} · KL {_x(h['ratio'])} TB20 · {_pc(h['pct'])} · phiên {_dm(trade_date)}",
+        "body": f"giá {h['close']:.2f} · KL {_vol(h['vol'])} (TB20 {_vol(h['avg20'])}) · nến xanh",
+        "symbol": h["symbol"], "url": "./#spike", "tag": f"pp-spike-{h['symbol']}", "hot": True,
+    }
+
+
+def spike_digest_payload(hits: list[dict], trade_date: str) -> dict:
+    parts = [f"{h['symbol']} {_pc(h['pct'])} {_x(h['ratio'])}" for h in hits]
+    return {"kind": "spike-digest", "title": f"🔥 {len(hits)} mã KL đột biến · phiên {_dm(trade_date)}",
+            "body": " · ".join(parts), "url": "./#spike", "tag": "pp-spike-digest", "hot": True}
+
+
 def heartbeat_payload(cov80: float | None, trade_date: str) -> dict:
     cov = f"nón 80 % bao {round(cov80 * 100)} % (60 phiên)" if cov80 is not None else "chưa đủ phiên để chấm"
     return {"kind": "heartbeat", "title": "Price Path vẫn chạy", "body": f"{cov} · dữ liệu đến phiên {_dm(trade_date)}",

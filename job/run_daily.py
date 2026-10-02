@@ -19,7 +19,7 @@ from datetime import datetime
 from common import dnse, store as store_mod
 from common.config import HISTORY, INDEX_SYMBOL, SITE_DATA, TZ
 
-from . import forecast, push, settings, watchlist
+from . import forecast, push, settings, volspike, watchlist
 from model import direction
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,6 +27,7 @@ log = logging.getLogger("job")
 
 LATEST = SITE_DATA / "latest.json"
 BARS = SITE_DATA / "bars.json"
+SPIKE = SITE_DATA / "spike.json"
 STATE = SITE_DATA / "state.json"
 DAILY = SITE_DATA / "daily"
 
@@ -150,6 +151,19 @@ def _send_alerts(alerts: list[dict], trade_iso: str, subs: list[dict], digest_th
     return res
 
 
+def _send_spike(hits: list[dict], trade_iso: str, subs: list[dict], digest_threshold: int) -> dict:
+    res = {"sent": 0, "gone": 0, "failed": 0, "errors": [], "n_symbols": len(hits)}
+    payloads = ([push.spike_digest_payload(hits, trade_iso)] if len(hits) > digest_threshold
+                else [push.spike_payload(h, trade_iso) for h in hits])
+    for p in payloads:
+        r = push.send(p, subs)
+        for k in ("sent", "gone", "failed"):
+            res[k] += r[k]
+        res["errors"] += r["errors"]
+    res["mode"] = "digest" if len(hits) > digest_threshold else "per_symbol"
+    return res
+
+
 def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> int:
     now = datetime.now(TZ)
     st = _load(STATE, {})
@@ -212,6 +226,11 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
     changed += len(adjusted)     # tải lại trọn lịch sử cũng là đổi kho — không cộng thì kho không được ghi
     log.info("Kho: nối %d nến mới/đổi", changed)
 
+    # KL đột biến: chỉ mã có nến ĐÚNG phiên hôm nay (mã không khớp lệnh mang nến cũ → không báo lại)
+    spike = volspike.scan(hist, items, trade_iso, cfg)
+    log.info("KL đột biến phiên %s: %s", trade_iso,
+             ", ".join(f"{h['symbol']} +{h['pct'] * 100:.1f} % {h['ratio']:.1f}×" for h in spike["today"]) or "không có")
+
     # chấm nón đã đến hạn TRƯỚC khi dự báo → nón hôm nay dùng hệ số giãn đã sửa
     conf_state = forecast.load_conf_state()
     scored = set(st.get("scored") or [])
@@ -234,6 +253,9 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
         push_res = {"source": src, "n_devices": len(subs)}
         if subs and push.configured():
             push_res.update(_send_alerts(alerts, trade_iso, subs, int(cfg.get("digest_threshold") or 6), em["alert_mode"]))
+            if cfg.get("spike_push") and spike["today"]:
+                push_res["spike"] = _send_spike(spike["today"], trade_iso, subs, int(cfg.get("digest_threshold") or 6))
+                push_res["gone"] = push_res.get("gone", 0) + push_res["spike"]["gone"]
             if cfg.get("heartbeat") and now.weekday() == 0:
                 push_res["heartbeat"] = push.send(push.heartbeat_payload(ver["cov"], trade_iso), subs)["sent"]
             if push.test_requested():
@@ -271,6 +293,7 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
         for it in fc:
             if not it.get("ok"):
                 print(f"  ? {it['symbol']} {it.get('reason')}")
+        print(f"KL đột biến phiên {trade_iso}: " + (", ".join(f"{h['symbol']} +{h['pct'] * 100:.1f} % {h['ratio']:.1f}× (KL {h['vol']:,} / TB20 {h['avg20']:,})" for h in spike["today"]) or "không có"))
         print(f"Sự kiện (bật {em['enabled']}, push {em['push']}, hiện {em['active_days']} phiên):")
         for it in fc:
             for e in it.get("events") or []:
@@ -280,6 +303,8 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
                       f"{q.get('10', '—')}–{q.get('90', '—')} · chạm +5 % trước: {e.get('p_touch')}")
         return 0
 
+    SPIKE.write_text(json.dumps({**spike, "generated_at": latest["generated_at"], "push": push_res.get("spike")},
+                                ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     _dump(daily_file, {"trade_date": trade_iso, "generated_at": latest["generated_at"], "late": late,
                        "forecasts": {it["symbol"]: {"price": it["price"], "q_log": it["q_log"], "p10": it["p10"],
                                                     "alert": it["alert"], "level": it["level"], "n": it["n"],
