@@ -108,7 +108,7 @@ venv\Scripts\python -m scripts.zone_check_sources FPT   # đối chiếu Mua/Bá
 Tab "Cá mập ẩn": dò **lệnh chia nhỏ nhịp đều (TWAP)** và **lệnh rổ** trên chính tick 39 mã mà job zone tải lúc
 15:50 (không gọi thêm nguồn). Chuỗi = ≥ 8 lệnh cùng phía, cùng KL chính xác (≥ 500 cp), cách ≤ 180 s, CV khoảng
 cách < 0,3. Rổ = ≥ 5 mã cùng phía cùng giây, mỗi lệnh ≥ 100 tr (bỏ 09:15:00, 13:00:00). Nghiên cứu ở
-`c:\Claude codelgo-radar-lab`: 39 mã × 4 phiên, chuỗi 92 thật vs 2,8 khi xáo phía/KL; rổ 162 vs 2 khi dịch giờ.
+`c:\Claude code\algo-radar-lab`: 39 mã × 4 phiên, chuỗi 92 thật vs 2,8 khi xáo phía/KL; rổ 162 vs 2 khi dịch giờ.
 **Chưa đo sức dự báo giá** (cần ≥ 60 phiên) → chỉ hiển thị, không push.
 
 - Kho `data/algo/<ngày>.json` (60 phiên, ghi theo từng mã trong vòng gom) → `docs/data/algo/index.json` +
