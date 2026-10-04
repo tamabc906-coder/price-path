@@ -6,7 +6,8 @@
 - x = ATO + ATC (không có hướng) — FPT 18/09 ATC chiếm 55 % KL phiên, gộp bừa vào một bên là hỏng tỷ lệ mua/bán.
 - mua_lớn/bán_lớn = phần của mua/bán đến từ LỆNH có giá trị ≥ ngưỡng (mặc định 500 triệu đ) — lớp "cá mập".
   VNDirect tách một lệnh chủ động thành nhiều tick (mỗi lệnh chờ bị khớp một dòng: 14:29:42 · 73.9 · 5000 trên
-  app = 7 tick 500+100+100+500+700+2000+1100), nên phải gộp tick cùng giây/giá/hướng lại thành lệnh trước khi xét.
+  app = 7 tick 500+100+100+500+700+2000+1100), nên phải gộp tick cùng giây/giá/hướng lại thành lệnh, rồi gộp tiếp các lệnh cùng giây/hướng thành
+  một lệnh quét (ăn nhiều mức giá) trước khi xét ngưỡng — xem sweeps().
 - gap = số cp sàn đã đếm mà nguồn không trả tick, chỉ có mặt khi khác 0 (TCB 23/09/2026 hụt 500 cp).
 - Không lưu tick thô: 12 k tick × 39 mã × 40 phiên quá nặng cho git; bản gộp mỗi phiên chỉ vài chục dòng.
 
@@ -51,6 +52,24 @@ def orders(ticks: list[dict]) -> list[dict]:
     return out
 
 
+def sweeps(ords: list[dict]) -> list[list[dict]]:
+    """Nhóm các lệnh LIÊN TIẾP cùng giây + cùng hướng chủ động thành một lệnh quét (có thể nhiều mức giá).
+
+    Một lệnh chủ động lớn ăn hết mức giá tốt nhất rồi ăn tiếp mức kế: PLX 01/10/2026 09:48:44 mua 20.000 cp =
+    399 tr ở 37,60 + 354 tr ở 37,65 — gộp theo giá thì hai mảnh đều < 500 tr và lớp cá mập bỏ sót (soát 04/10/2026:
+    ≈ 1,2 % giá trị cá mập, 39 mã × 4 phiên). Ngưỡng lệnh lớn xét trên cả lệnh quét — khuôn zone/algo.events.
+    ATO/ATC giữ riêng từng dòng.
+    """
+    out: list[list[dict]] = []
+    for o in ords:
+        last = out[-1][-1] if out else None
+        if (last and o["side"] in SIDE_INDEX and last["side"] == o["side"] and last["time"] == o["time"]):
+            out[-1].append(o)
+        else:
+            out.append([o])
+    return out
+
+
 def aggregate(ticks: list[dict], big_value_vnd: int = BIG_LOT_VALUE_VND) -> dict | None:
     """Tick (cũ → mới) → session dict; None nếu không có tick."""
     if not ticks:
@@ -58,13 +77,15 @@ def aggregate(ticks: list[dict], big_value_vnd: int = BIG_LOT_VALUE_VND) -> dict
     levels: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0, 0])
     big_threshold = big_value_vnd / 1000  # giá(nghìn) × KL
     total = 0
-    for o in orders(ticks):
-        row = levels[price_key(o["price"])]
-        idx = SIDE_INDEX.get(o["side"], OTHER)
-        row[idx] += o["vol"]
-        if idx != OTHER and o["price"] * o["vol"] >= big_threshold:
-            row[BIG_BUY if idx == BUY else BIG_SELL] += o["vol"]
-        total += o["vol"]
+    for sweep in sweeps(orders(ticks)):
+        idx = SIDE_INDEX.get(sweep[0]["side"], OTHER)
+        big = idx != OTHER and sum(o["price"] * o["vol"] for o in sweep) >= big_threshold
+        for o in sweep:
+            row = levels[price_key(o["price"])]
+            row[idx] += o["vol"]
+            if big:
+                row[BIG_BUY if idx == BUY else BIG_SELL] += o["vol"]
+            total += o["vol"]
     out = {
         "src": "vnd",
         "est": False,

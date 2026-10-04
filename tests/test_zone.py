@@ -81,6 +81,22 @@ def test_aggregate_levels_sides_and_big_lots():
     assert list(s["levels"]) == ["71.7", "74.2", "74.5"]
 
 
+def test_aggregate_sweep_across_prices_counts_as_one_big_order():
+    # PLX 01/10/2026 09:48:44: mua 20.000 cp quét 2 mức giá — 399 tr + 354 tr = 752 tr → lớn ở cả hai mức
+    ticks = [tick("09:48:44", 37.6, v, "PS", i) for i, v in enumerate([7300, 200, 100, 1000, 2000])]
+    ticks += [tick("09:48:44", 37.65, v, "PS", 10 + i) for i, v in enumerate([500, 100, 8800])]
+    ticks.append(tick("09:48:44", 37.6, 9000, "PB", 99))   # bán chủ động cùng giây: lệnh khác, 338 tr → nhỏ
+    s = collect.aggregate(ticks, big_value_vnd=500_000_000)
+    assert s["levels"]["37.6"] == [10600, 9000, 0, 10600, 0]
+    assert s["levels"]["37.65"] == [9400, 0, 0, 9400, 0]
+
+
+def test_aggregate_same_side_different_seconds_not_merged():
+    ticks = [tick("10:00:00", 37.6, 10000, "PS", 1), tick("10:00:01", 37.65, 9000, "PS", 2)]
+    s = collect.aggregate(ticks, big_value_vnd=500_000_000)
+    assert s["levels"]["37.6"][3] == 0 and s["levels"]["37.65"][3] == 0
+
+
 def test_aggregate_records_gap_only_when_source_missed_ticks():
     full = [tick("09:15:00", 74.5, 62300, "ATO", 62300), tick("10:00:00", 74.2, 100, "PB", 62400)]
     assert "gap" not in collect.aggregate(full)  # phiên đủ → không đẻ "gap":0 làm phình diff git
