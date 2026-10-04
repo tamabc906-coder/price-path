@@ -907,7 +907,7 @@
     return `<button type="button" class="al-ch${i === aCh ? " on" : ""}" data-ach="${i}">
       <span class="al-sd ${buy ? "up" : "down"}">${buy ? "▲ Mua" : "▼ Bán"}</span>
       <span class="al-m"><b>${anum(c.size)} cp × ${c.n}</b> · ${c.step} giây/lệnh · ${ahm(c.t[0])}–${ahm(c.t[c.t.length - 1])}
-        <span class="al-s">giá TB ${c.avg.toFixed(2)} (<span class="${good ? "up" : "down"}">${a1(dv)} % so VWAP</span>)${c.waves > 1 ? ` · <span class="al-tag">${c.waves} đợt</span>` : ""}${c.carry ? ` · <span class="al-tag">tiếp từ phiên trước</span>` : ""}</span></span>
+        <span class="al-s">giá TB ${c.avg.toFixed(2)} (<span class="${good ? "up" : "down"}">${a1(dv)} % so VWAP</span>)${c.miss ? ` · lỡ ${c.miss} nhịp` : ""}${c.waves > 1 ? ` · <span class="al-tag">${c.waves} đợt</span>` : ""}${c.carry ? ` · <span class="al-tag">tiếp từ phiên trước</span>` : ""}</span></span>
       <span class="al-v"><b>${a2(c.val)}</b> tỷ<span class="al-s">${String(c.pct).replace(".", ",")} % GTGD</span></span></button>`;
   }
   function algoCard(s) {
@@ -949,7 +949,7 @@
     const rows = AI.days.map((d) => `<tr><td>${dmy(d.day)}</td><td>${d.nsym}</td><td>${d.test.ch_real}</td><td>${String(d.test.ch_fake).replace(".", ",")}</td><td>${d.test.bk_real}</td><td>${d.test.bk_fake}</td></tr>`).join("");
     return `<details class="box al-det"><summary>Cách đọc và kiểm định</summary>
       <p>Tổ chức ít khi đặt một lệnh lớn. Họ giao cho máy cắt nhỏ, mỗi lệnh con 100–300 tr, bắn đều theo nhịp (TWAP). Ngưỡng cá mập ≥ ${r.whale_tr} tr/lệnh bỏ sót các lệnh con này nên chúng bị tính là nhỏ lẻ.</p>
-      <p><b>Cách dò:</b> gộp các tick cùng giây, cùng phía thành một lệnh. Chuỗi là các lệnh cùng phía, cùng khối lượng chính xác (≥ ${anum(r.size)} cp), hai lệnh liền nhau cách ≤ ${r.gap} giây. Giữ chuỗi có ≥ ${r.n} lệnh và nhịp đều (độ lệch chuẩn khoảng cách / trung bình &lt; ${String(r.cv).replace(".", ",")}).</p>
+      <p><b>Cách dò:</b> gộp các tick cùng giây, cùng phía thành một lệnh. Chuỗi là các lệnh cùng phía, cùng khối lượng chính xác (≥ ${anum(r.size)} cp), hai lệnh liền nhau cách ≤ ${Math.round(r.gap / 60)} phút. Giữ chuỗi có ≥ ${r.n} lệnh và <b>nhịp đều</b>: khoảng cách giữa hai lệnh bằng 1, 2 hoặc 3 lần nhịp (sai ≤ ${Math.round((r.tol || 0.15) * 100)} %) ở ≥ ${Math.round((r.ok || 0.85) * 100)} % số khoảng — tức cho phép robot lỡ 1–2 nhịp. Luật cũ (≥ ${r.cv_n || 8} lệnh, cách ≤ ${r.cv_gap || 180} giây, độ lệch chuẩn / trung bình khoảng cách &lt; ${String(r.cv).replace(".", ",")}) vẫn giữ.</p>
       <p><b>Tổng hợp</b> = cá mập ≥ ${r.whale_tr} tr + lệnh con của chuỗi, trừ phần khớp trong giây có lệnh rổ.</p>
       <p><b>Kiểm định:</b> xáo ngẫu nhiên phía và khối lượng giữa các lệnh trong ngày (giữ nguyên thời điểm, 5 lần); với rổ, dịch giờ mỗi mã ±30 phút. Số "xáo" là mức trùng hợp.</p>
       <div class="tbl" style="margin:0"><table><thead><tr><th>Phiên</th><th>Mã</th><th>Chuỗi</th><th>Xáo</th><th>Rổ</th><th>Dịch giờ</th></tr></thead><tbody>${rows}</tbody></table></div>

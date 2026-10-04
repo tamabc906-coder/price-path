@@ -30,9 +30,17 @@ KEEP_SITE = 20          # phiên hiện trên app
 
 # Ngưỡng cố định — chọn theo tỷ lệ báo nhầm trên dữ liệu xáo, KHÔNG chỉnh theo giá đi sau đó.
 MIN_EVENTS = 100        # mã phải có ≥ 100 lệnh chủ động trong phiên
-CH_MIN_N = 8            # chuỗi ≥ 8 lệnh
-CH_MAX_CV = 0.3         # nhịp đều: độ lệch chuẩn / trung bình khoảng cách < 0,3
-CH_GAP = 180            # hai lệnh liền nhau cách ≤ 180 giây
+# 04/10/2026 nới theo soát lại (39 mã × 4 phiên, xáo 3 lần): luật cũ đòi nhịp hoàn hảo nên robot lỡ MỘT nhịp là mất
+# cả chuỗi (TCB 30/09 mua 900 cp × 223 lệnh đúng 15 s, GMD 01/10 bán 2.000 × 104) — 92 chuỗi/154 tỷ, nhầm 2,5 % →
+# luật nhịp cho phép lỡ 1–2 nhịp (cắt 600 s rồi 180 s, gộp luật cũ): 230 chuỗi/443 tỷ, nhầm 2,1 % (xáo 5 lần).
+# 5–7 lệnh với CV (nhầm 14 %), lệnh < 500 cp (12 %), cỡ lệnh lệch 5 % (thêm ít) — không dùng.
+CH_MIN_N = 6            # chuỗi ≥ 6 lệnh (luật nhịp) — luật CV cũ vẫn giữ ≥ 8 lệnh, cách ≤ 180 s
+CH_GAP = 600            # hai lệnh liền nhau cách ≤ 600 giây
+CH_STEP_TOL = 0.15      # khoảng cách ≈ k × nhịp (k = 1..3), sai ≤ 15 % nhịp
+CH_STEP_OK = 0.85       # ≥ 85 % khoảng cách phải đạt
+CV_MIN_N = 8            # luật cũ (A): ≥ 8 lệnh, cách ≤ 180 s, CV < 0,3
+CV_GAP = 180
+CH_MAX_CV = 0.3
 CH_MIN_SIZE = 500       # cỡ lệnh ≥ 500 cp
 BK_MIN_SYMS = 5         # rổ: ≥ 5 mã cùng phía cùng giây
 BK_MIN_VND = 100_000_000  # mỗi lệnh trong rổ ≥ 100 tr đ
@@ -80,23 +88,58 @@ def cv(times: list[int]) -> float:
     return st.pstdev(g) / m if m > 0 else 9.0
 
 
+def steady(times: list[int]) -> tuple[bool, int]:
+    """(nhịp đều?, số nhịp lỡ). Nhịp m = trung vị khoảng cách; khoảng g đạt khi k = round(g/m) ∈ 1..3 và
+    |g − k·m| ≤ CH_STEP_TOL·m — robot lỡ một lệnh con thì khoảng đó gấp đôi mà vẫn là cùng một nhịp."""
+    g = [b - a for a, b in zip(times, times[1:])]
+    m = st.median(g)
+    if m <= 0:
+        return False, 0
+    good = miss = 0
+    for x in g:
+        k = round(x / m)
+        if 1 <= k <= 3 and abs(x - k * m) <= CH_STEP_TOL * m:
+            good += 1
+            miss += k - 1
+    return good >= CH_STEP_OK * len(g), miss
+
+
+def _segments(idx: list[int], ev: list[list], gap: int) -> list[list[int]]:
+    out, cur = [], [idx[0]]
+    for i in idx[1:]:
+        if ev[i][0] - ev[cur[-1]][0] <= gap:
+            cur.append(i)
+        else:
+            out.append(cur)
+            cur = [i]
+    out.append(cur)
+    return out
+
+
 def chains(ev: list[list]) -> list[tuple[str, int, list[int]]]:
-    """(phía, cỡ, chỉ số lệnh) cho mỗi chuỗi cùng phía + cùng KL chính xác, cách ≤ CH_GAP, ≥ CH_MIN_N, nhịp đều."""
+    """(phía, cỡ, chỉ số lệnh) cho mỗi chuỗi cùng phía + cùng KL chính xác (≥ CH_MIN_SIZE cp).
+
+    Luật nhịp: đoạn cách ≤ CH_GAP, ≥ CH_MIN_N lệnh, steady(). Cộng thêm luật cũ (cách ≤ CV_GAP, ≥ CV_MIN_N,
+    CV < CH_MAX_CV) cho phần chưa nằm trong chuỗi nào — để bản nới không làm mất chuỗi luật cũ đã bắt.
+    """
     by: dict[tuple[str, int], list[int]] = defaultdict(list)
     for i, (_, side, v, _) in enumerate(ev):
         if v >= CH_MIN_SIZE:
             by[(side, v)].append(i)
     out = []
     for (side, v), idx in by.items():
-        cur = [idx[0]]
-        for i in idx[1:] + [None]:
-            if i is not None and ev[i][0] - ev[cur[-1]][0] <= CH_GAP:
-                cur.append(i)
-                continue
-            if len(cur) >= CH_MIN_N and cv([ev[j][0] for j in cur]) < CH_MAX_CV:
-                out.append((side, v, cur))
-            if i is not None:
-                cur = [i]
+        used: set[int] = set()
+        # cắt 600 s trước (robot chậm), rồi 180 s cho phần còn lại: cùng cỡ lệnh có thể được bên khác đặt rải
+        # trong phiên, đoạn 600 s dính vào đó thì lệch nhịp (TCB 25/09 mua 20.000 cp × 15 lệnh, 67 s/lệnh)
+        for gap in (CH_GAP, CV_GAP):
+            for seg in _segments(idx, ev, gap):
+                if (len(seg) >= CH_MIN_N and not used.intersection(seg)
+                        and steady([ev[j][0] for j in seg])[0]):
+                    out.append((side, v, seg))
+                    used.update(seg)
+        for seg in _segments(idx, ev, CV_GAP):
+            if len(seg) >= CV_MIN_N and not used.intersection(seg) and cv([ev[j][0] for j in seg]) < CH_MAX_CV:
+                out.append((side, v, seg))
     return out
 
 
@@ -144,7 +187,7 @@ def symbol_day(ticks: list[dict]) -> dict | None:
     for side, v, idx in cs:
         ts = [ev[j][0] for j in idx]
         ps = [ev[j][3] for j in idx]
-        out_ch.append({"side": side, "size": v, "t": ts, "p": ps, "cv": round(cv(ts), 3)})
+        out_ch.append({"side": side, "size": v, "t": ts, "p": ps, "cv": round(cv(ts), 3), "miss": steady(ts)[1]})
     out_ch.sort(key=lambda c: c["t"][0])
     fake = sum(len(chains(shuffled(ev, k))) for k in range(SHUFFLES)) / SHUFFLES
     return {
@@ -295,6 +338,7 @@ def build_site(closes: dict[str, dict[str, float]] | None = None) -> int:
     _dump(ALGO_SITE / "index.json", {
         "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
         "rule": {"n": CH_MIN_N, "cv": CH_MAX_CV, "gap": CH_GAP, "size": CH_MIN_SIZE,
+                 "tol": CH_STEP_TOL, "ok": CH_STEP_OK, "cv_n": CV_MIN_N, "cv_gap": CV_GAP,
                  "bk_syms": BK_MIN_SYMS, "bk_tr": BK_MIN_VND // 1_000_000, "whale_tr": WHALE_VND // 1_000_000},
         "days": index,
     })

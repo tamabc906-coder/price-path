@@ -6,8 +6,9 @@ def tk(sec, price, vol, side):
 
 
 def noise(n=120, start=9 * 3600 + 20 * 60):
-    """Lệnh nhỏ lẻ xen kẽ, cỡ lệnh khác nhau để không tự tạo chuỗi."""
-    return [tk(start + 37 * i, 20.0, 100 + 100 * (i % 7), "PS" if i % 3 else "PB") for i in range(n)]
+    """Lệnh nhỏ lẻ xen kẽ, < 500 cp (dưới cỡ tối thiểu của chuỗi) để nền không tự tạo chuỗi — bản cũ lặp đều
+    100..700 cp mỗi 37 s, chính nó là một "robot" khi luật nhịp cho phép cách tới 600 s."""
+    return [tk(start + 37 * i, 20.0, 100 + 100 * (i % 4), "PS" if i % 3 else "PB") for i in range(n)]
 
 
 def test_events_merge_same_second_and_passive_naming():
@@ -60,3 +61,28 @@ def test_combined_whale_subtracts_basket_part():
     a = next(s for s in v["stocks"] if s["sym"] == "A")
     assert a["whale"] == -0.6 and a["bk"] == -0.6 and a["comb"] == 0
     assert v["test"]["bk_real"] == 1
+
+
+def chain_ticks(times, size=1800):
+    return sorted(noise() + [tk(t, 20.0, size, "PS") for t in times], key=lambda t: t["time"])
+
+
+def test_chain_with_one_missed_beat_found():
+    # robot 100 s/lệnh lỡ một nhịp (một quãng 200 s) — luật CV cũ bỏ cả chuỗi
+    times = [36000 + 100 * i for i in range(10) if i != 5]
+    rec = algo.symbol_day(chain_ticks(times))
+    assert [(c["size"], len(c["t"]), c["miss"]) for c in rec["chains"]] == [(1800, 9, 1)]
+
+
+def test_six_steady_orders_found_five_not():
+    assert len(algo.symbol_day(chain_ticks([36000 + 60 * i for i in range(6)]))["chains"]) == 1
+    assert algo.symbol_day(chain_ticks([36000 + 60 * i for i in range(5)]))["chains"] == []
+
+
+def test_random_gaps_rejected():
+    gaps = [40, 230, 70, 300, 25, 150, 410, 90]
+    ts, t = [], 36000
+    for g in gaps:
+        ts.append(t)
+        t += g
+    assert algo.symbol_day(chain_ticks(ts))["chains"] == []
