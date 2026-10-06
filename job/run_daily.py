@@ -19,7 +19,7 @@ from datetime import datetime
 from common import dnse, store as store_mod
 from common.config import HISTORY, INDEX_SYMBOL, SITE_DATA, TZ
 
-from . import forecast, push, settings, volspike, watchlist
+from . import forecast, push, settings, smc, volspike, watchlist
 from model import direction
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -28,6 +28,7 @@ log = logging.getLogger("job")
 LATEST = SITE_DATA / "latest.json"
 BARS = SITE_DATA / "bars.json"
 SPIKE = SITE_DATA / "spike.json"
+SMC = SITE_DATA / "smc.json"
 STATE = SITE_DATA / "state.json"
 DAILY = SITE_DATA / "daily"
 
@@ -231,6 +232,15 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
     log.info("KL đột biến phiên %s: %s", trade_iso,
              ", ".join(f"{h['symbol']} +{h['pct'] * 100:.1f} % {h['ratio']:.1f}×" for h in spike["today"]) or "không có")
 
+    # Order Block / SMC: chỉ bản đồ cho tab "Order BK" — lỗi ở đây không được làm hỏng job (job nuôi kho nến cho zone)
+    try:
+        smc_out = smc.scan(hist, items, trade_iso)
+        log.info("SMC: %d mã, %d mã đang trong/gần vùng OB", len(smc_out["symbols"]),
+                 sum(1 for x in smc_out["symbols"] if any(z["pos"] != "far" for z in x["zones"])))
+    except Exception:  # noqa: BLE001
+        log.exception("SMC lỗi — bỏ qua tab Order BK phiên này")
+        smc_out = None
+
     # chấm nón đã đến hạn TRƯỚC khi dự báo → nón hôm nay dùng hệ số giãn đã sửa
     conf_state = forecast.load_conf_state()
     scored = set(st.get("scored") or [])
@@ -305,6 +315,9 @@ def run(force: bool = False, dry_run: bool = False, no_push: bool = False) -> in
 
     SPIKE.write_text(json.dumps({**spike, "generated_at": latest["generated_at"], "push": push_res.get("spike")},
                                 ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    if smc_out is not None:
+        SMC.write_text(json.dumps({**smc_out, "generated_at": latest["generated_at"]}, ensure_ascii=False,
+                                  separators=(",", ":")), encoding="utf-8")
     _dump(daily_file, {"trade_date": trade_iso, "generated_at": latest["generated_at"], "late": late,
                        "forecasts": {it["symbol"]: {"price": it["price"], "q_log": it["q_log"], "p10": it["p10"],
                                                     "alert": it["alert"], "level": it["level"], "n": it["n"],

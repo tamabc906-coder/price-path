@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -30,6 +30,7 @@
   <symbol id="i-zone" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M5 5v14"/><path d="M5 8h9"/><path d="M5 12h14"/><path d="M5 16h6"/></symbol>
   <symbol id="i-spike" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 20v-4"/><path d="M10 20v-6"/><path d="M14 20V5"/><path d="M18 20v-5"/><path d="M11.5 7.5 14 5l2.5 2.5"/></symbol>
   <symbol id="i-algo" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19h18"/><circle cx="5.5" cy="13" r="1.4"/><circle cx="10" cy="13" r="1.4"/><circle cx="14.5" cy="13" r="1.4"/><circle cx="19" cy="13" r="1.4"/><path d="M5.5 8.5c3-3.5 10.5-3.5 13.5 0"/></symbol>
+  <symbol id="i-smc" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="9" width="10" height="6" rx="1"/><path d="M5 12h10" stroke-dasharray="1.5 2"/><path d="M17 5v12"/><path d="M15.5 7h3"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
 </defs></svg>
 
@@ -186,6 +187,34 @@
     <div class="foot">Bản đồ dòng tiền từ khớp lệnh sau phiên, chưa đo lợi thế; không phải khuyến nghị.</div>
   </section>
 
+  <section class="panel" id="p-smc" role="tabpanel">
+    <div class="head">
+      <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Order Block</div></div><span class="kicker" id="smcKicker">—</span></div>
+      <div class="sub">Bản đồ SMC trên nến ngày · 39 mã KingStock</div>
+    </div>
+    <div class="strip" id="smcStrip">Đang tải…</div>
+    <div class="ctrl">
+      <label for="smcSym">Mã</label>
+      <select id="smcSym"></select>
+      <span class="sp"></span>
+      <span class="px" id="smcPx"></span>
+    </div>
+    <div class="chips pad" id="smcChips"></div>
+    <div class="cone big smc-wrap" id="smcChart"></div>
+    <div class="sort" id="smcSpan"><span class="k">Phiên</span><button type="button" data-span="60" aria-pressed="true">60</button><button type="button" data-span="120" aria-pressed="false">120</button></div>
+    <div class="sort" id="smcLayers"><span class="k">Lớp</span><button type="button" data-layer="struct">BOS/CHoCH</button><button type="button" data-layer="fvg">FVG</button><button type="button" data-layer="bb">Breaker</button><button type="button" data-layer="swing">HH/HL</button></div>
+    <div class="legend smc-lg">
+      <span><i class="sb-bull"></i>Bull OB</span>
+      <span><i class="sb-bear"></i>Bear OB</span>
+      <span><i class="sb-bb"></i>BB · ▼ hồi lên chạm lại</span>
+      <span><i class="sb-fvg"></i>FVG</span>
+      <span><i class="sb-dot"></i>Mitigation giữ vùng</span>
+      <span><i class="sb-dot w"></i>Mitigation thủng vùng</span>
+    </div>
+    <div class="tbl scroll" id="smcList"></div>
+    <div class="foot">Bản đồ vùng giá theo Smart Money Concepts, không phải khuyến nghị. Đo 11 năm trên 39 mã: mua khi giá chạm OB <b>không tốt hơn mua bừa</b> (0/7 giả thuyết qua cổng); dùng OB làm mốc đặt dừng lỗ, không làm lý do vào lệnh.</div>
+  </section>
+
   <section class="panel" id="p-settings" role="tabpanel">
     <div class="head">
       <div class="row"><div class="brand"><svg><use href="#logo"/></svg><div class="title small">Cài đặt</div></div><span class="kicker">v1</span></div>
@@ -210,6 +239,7 @@
   <button role="tab" aria-selected="true" data-tab="zone"><svg><use href="#i-zone"/></svg><span>Vùng giá</span></button>
   <button role="tab" aria-selected="false" data-tab="spike"><svg><use href="#i-spike"/></svg><span>KL đột biến</span></button>
   <button role="tab" aria-selected="false" data-tab="algo"><svg><use href="#i-algo"/></svg><span>Cá mập ẩn</span></button>
+  <button role="tab" aria-selected="false" data-tab="smc"><svg><use href="#i-smc"/></svg><span>Order BK</span></button>
   <button role="tab" aria-selected="false" data-tab="today" hidden><svg><use href="#i-today"/></svg><span>Hôm nay</span></button>
   <button role="tab" aria-selected="false" data-tab="chart" hidden><svg><use href="#i-chart"/></svg><span>Biểu đồ</span></button>
   <button role="tab" aria-selected="false" data-tab="history" hidden><svg><use href="#i-history"/></svg><span>Sổ chấm</span></button>
@@ -218,6 +248,6 @@
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

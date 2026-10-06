@@ -288,3 +288,21 @@ nav button[aria-selected="true"] { background: var(--brand); color: #fff; font-w
 .al-hm th { font-weight: 500; color: var(--mute); padding: 0 1px 3px; writing-mode: vertical-rl; transform: rotate(180deg); height: 34px; }
 .al-hm td { width: 18px; height: 16px; border: 1px solid var(--bg); padding: 0; }
 .al-hm td:first-child { width: auto; font-weight: 700; color: var(--ink); padding-right: 6px; border: 0; background: none !important; white-space: nowrap; }
+
+/* tab Order BK (job/smc.py → data/smc.json) */
+.smc-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.smc-wrap svg { min-width: 100%; }
+.smc-wrap text { fill: var(--mute); font: 10px var(--sans); }
+.smc-wrap .lb { font-weight: 700; font-size: 10px; }
+.smc-wrap .sw { font-size: 9px; }
+#smcLayers button[aria-pressed="false"] { background: #fff; color: var(--mute); }
+.smc-lg i { width: 14px; height: 9px; border-radius: 2px; }
+.smc-lg i.sb-bull { background: rgba(46,125,79,.18); border: 1px solid var(--up); }
+.smc-lg i.sb-bear { background: rgba(184,74,58,.18); border: 1px solid var(--down); }
+.smc-lg i.sb-bb { background: none; border: 1px dashed var(--down); }
+.smc-lg i.sb-fvg { background: rgba(59,111,209,.14); border: 1px solid #3B6FD1; }
+.smc-lg i.sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
+.smc-lg i.sb-dot.w { background: var(--gold); }
+.tbl tr[data-smc] { cursor: pointer; }
+.tbl tr[data-smc]:hover td, .tbl tr[data-smc].on td { background: var(--strip); }
+.tbl td .chips { justify-content: flex-start; }

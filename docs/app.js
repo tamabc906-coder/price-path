@@ -1114,6 +1114,136 @@
   function toast(t, b) { $("toastTitle").textContent = t; $("toastBody").textContent = b || ""; $("toast").classList.add("on"); clearTimeout(toastTimer); toastTimer = setTimeout(() => $("toast").classList.remove("on"), 5000); }
   $("toast").addEventListener("click", () => $("toast").classList.remove("on"));
 
+  // ---------------------------------------------------------------- Order BK (job/smc.py → data/smc.json)
+  // Bản đồ ký hiệu SMC trên nến ngày, chép cách vẽ của order-block-lab. Lab đo OB không có lợi thế → chỉ xem, không push.
+  let SM = null, smSym = null, smSpan = 60;
+  const smLayer = { struct: true, fvg: true, bb: true, swing: false };
+  try { Object.assign(smLayer, JSON.parse(localStorage.getItem("pp-smc-layers") || "{}")); } catch (_) { /* bỏ qua */ }
+  const smP = (v) => (+v.toFixed(2)).toLocaleString("vi-VN");
+  const smKind = { bull: "Bull OB", bear: "Bear OB", bb: "Breaker" };
+
+  function smChips(x) {
+    const out = [];
+    x.zones.filter((z) => z.pos !== "far").forEach((z) => {
+      const where = z.pos === "in" ? "Trong" : (z.above ? "Gần, trên" : "Gần, dưới");
+      out.push(`<span class="chip ${z.kind === "bull" ? "g" : "r"}">${where} ${smKind[z.kind]} ${smP(z.lo)}–${smP(z.hi)}</span>`);
+    });
+    const b = x.last_break;
+    if (b) out.push(`<span class="chip ${b.lab === "CHoCH" ? "y" : "lv"}">${b.lab}${b.up ? "↑" : "↓"} ${b.age ? b.age + " phiên trước" : "hôm nay"}</span>`);
+    return out.join("");
+  }
+  function smRank(x) {
+    const z = x.zones.find((q) => q.pos !== "far");
+    return z ? (z.pos === "in" ? 0 : 1 + (z.dist_atr || 0)) : 10 + (x.last_break ? x.last_break.age / 100 : 1);
+  }
+
+  function smDraw(x) {
+    const full = x.chart, N = Math.min(smSpan, full.ohlc.length), s0 = full.ohlc.length - N;
+    const ohlc = full.ohlc.slice(s0), dates = full.dates.slice(s0), n = N;
+    const sh = (i) => (i == null ? null : i - s0);
+    const obsAll = full.obs.filter((o) => o.k >= s0).map((o) => ({ ...o, k: o.k - s0, m: o.m - s0, end: o.end - s0, t: sh(o.t), brk: sh(o.brk), brk_close: sh(o.brk_close) }));
+    const breaks = full.breaks.filter((b) => b.s >= s0).map((b) => ({ ...b, s: b.s - s0, t: b.t - s0 }));
+    const fvgs = full.fvgs.filter((f) => f.i >= s0).map((f) => ({ ...f, i: f.i - s0, end: f.end - s0 }));
+    const swings = full.swings.filter((q) => q.i >= s0).map((q) => ({ ...q, i: q.i - s0 }));
+    const W = N > 80 ? 900 : 440, H = 320, padL = 6, padR = 44, padT = 14, padB = 22;
+    const cw = (W - padL - padR) / n;
+    let lo = Infinity, hi = -Infinity;
+    ohlc.forEach(([, h, l]) => { lo = Math.min(lo, l); hi = Math.max(hi, h); });
+    obsAll.forEach((o) => { lo = Math.min(lo, o.lo); hi = Math.max(hi, o.hi); });
+    const span = hi - lo || 1; lo -= span * .05; hi += span * .05;
+    const y = (v) => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+    const xc = (i) => padL + (i + .5) * cw, xl = (i) => padL + i * cw;
+    const UP = "#2E7D4F", DN = "#B84A3A", FV = "#3B6FD1", WARN = "#C99A2E", INK = "#1F3A2E";
+    const label = (x0, yy, t, col, anchor) => {
+      const w = t.length * 6 + 6, xa = anchor === "middle" ? x0 - w / 2 : x0;
+      return `<rect x="${xa}" y="${yy - 9}" width="${w}" height="12" rx="2" fill="rgba(255,255,255,.85)"/><text class="lb" x="${xa + 3}" y="${yy}" style="fill:${col}">${t}</text>`;
+    };
+    let grid = "", fvg = "", obs = "", bb = "", cand = "", struct = "", swing = "", txt = "", marks = "";
+    const step = Math.pow(10, Math.floor(Math.log10(span / 4)));
+    const tick = [1, 2, 5, 10].map((m) => m * step).find((t) => span / t <= 6);
+    for (let v = Math.ceil(lo / tick) * tick; v <= hi; v += tick) {
+      grid += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="#E6E1D3"/><text x="${W - padR + 5}" y="${y(v) + 3}">${smP(v)}</text>`;
+    }
+    const every = N > 80 ? 20 : 10;
+    for (let i = 0; i < n; i += every) grid += `<text x="${xc(i)}" y="${H - 6}" text-anchor="middle">${dates[i].slice(5).split("-").reverse().join("/")}</text>`;
+    fvgs.forEach((f) => {
+      const x0 = xl(f.i), x1 = xl(f.end + 1), h0 = y(f.lo) - y(f.hi);
+      fvg += `<rect x="${x0}" y="${y(f.hi)}" width="${x1 - x0}" height="${Math.max(1, h0)}" fill="rgba(59,111,209,.12)" stroke="${FV}" stroke-width=".6"/>`;
+      if (h0 >= 9) fvg += `<text class="sw" x="${x0 + 2}" y="${y(f.hi) + h0 / 2 + 3}" style="fill:${FV}">FVG</text>`;
+    });
+    obsAll.forEach((o) => {
+      const x0 = xl(o.k), x1 = xl(o.end + 1), col = o.bull ? UP : DN, mt = (o.lo + o.hi) / 2;
+      obs += `<rect x="${x0}" y="${y(o.hi)}" width="${x1 - x0}" height="${Math.max(1, y(o.lo) - y(o.hi))}" fill="${o.bull ? "rgba(46,125,79,.16)" : "rgba(184,74,58,.16)"}" stroke="${col}" stroke-width=".8"/>`;
+      obs += `<line x1="${x0}" x2="${x1}" y1="${y(mt)}" y2="${y(mt)}" stroke="${col}" stroke-dasharray="3 3" stroke-width=".8"/>`;
+      txt += label(x0 + 2, y(o.hi) + 11, o.bull ? "Bull OB" : "Bear OB", col);
+      if (x1 - x0 > 50) txt += `<text class="sw" x="${x1 - 3}" y="${y(mt) - 3}" text-anchor="end" style="fill:${col}">MT</text>`;
+      if (o.bull && o.brk_close != null && o.brk_close < n) {
+        const b1 = o.brk != null && o.brk < n ? o.brk : Math.min(o.brk_close + 60, n - 1);
+        const bx0 = xl(o.brk_close), bx1 = xl(b1 + 1);
+        bb += `<rect x="${bx0}" y="${y(o.hi)}" width="${bx1 - bx0}" height="${Math.max(1, y(o.lo) - y(o.hi))}" fill="none" stroke="${DN}" stroke-dasharray="4 3"/>` + label(bx0 + 2, y(o.lo) - 3, "BB", DN);
+        if (o.brk != null && o.brk < n) { const yy = y(ohlc[o.brk][1]) - 6; bb += `<path d="M${xc(o.brk) - 5},${yy - 8} L${xc(o.brk) + 5},${yy - 8} L${xc(o.brk)},${yy} Z" fill="${DN}"/>`; }
+      }
+    });
+    ohlc.forEach(([o, h, l, c], i) => {
+      const col = c >= o ? UP : DN;
+      cand += `<line x1="${xc(i)}" x2="${xc(i)}" y1="${y(h)}" y2="${y(l)}" stroke="${col}"/><rect x="${xc(i) - cw * .35}" y="${y(Math.max(o, c))}" width="${cw * .7}" height="${Math.max(1, Math.abs(y(o) - y(c)))}" fill="${col}"/>`;
+    });
+    breaks.forEach((b) => {
+      const col = b.up ? UP : DN, x0 = xc(b.s), x1 = xc(b.t), yy = y(b.p);
+      struct += `<line x1="${x0}" x2="${x1}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-dasharray="5 3" stroke-width="1.1"/>` + label((x0 + x1) / 2, b.up ? yy - 3 : yy + 11, b.lab, col, "middle");
+    });
+    swings.forEach((q) => { swing += `<text class="sw" x="${xc(q.i)}" y="${q.up ? y(q.p) - 4 : y(q.p) + 11}" text-anchor="middle">${q.lab}</text>`; });
+    obsAll.forEach((o) => {
+      if (o.t == null || o.t >= n) return;
+      const px = o.bull ? ohlc[o.t][2] : ohlc[o.t][1], cy = y(px) + (o.bull ? 8 : -8), f = o.res === "thủng" ? WARN : INK;
+      marks += `<circle cx="${xc(o.t)}" cy="${cy}" r="3.5" fill="${f}"/><text class="sw" x="${xc(o.t) + 6}" y="${cy + 3}" style="fill:${f}">Mitigation</text>`;
+    });
+    $("smcChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:${N > 80 ? "760px" : "100%"}" role="img" aria-label="Biểu đồ nến ${x.symbol} với ký hiệu SMC">` +
+      grid + `<g data-layer="fvg">${fvg}</g>` + obs + `<g data-layer="bb">${bb}</g>` + cand +
+      `<g data-layer="struct">${struct}</g><g data-layer="swing">${swing}</g>` + txt + marks + "</svg>";
+    smLayers();
+  }
+  function smLayers() {
+    document.querySelectorAll("#smcLayers button").forEach((b) => b.setAttribute("aria-pressed", smLayer[b.dataset.layer] ? "true" : "false"));
+    document.querySelectorAll("#smcChart g[data-layer]").forEach((g) => { g.style.display = smLayer[g.dataset.layer] ? "" : "none"; });
+  }
+  function smShow(sym) {
+    const x = SM.symbols.find((q) => q.symbol === sym) || SM.symbols[0];
+    smSym = x.symbol;
+    $("smcSym").value = smSym;
+    const ch = x.prev ? x.close / x.prev - 1 : 0;
+    $("smcPx").innerHTML = `${smP(x.close)} <span class="chg ${ch > 0 ? "up" : ch < 0 ? "down" : "flat"}">${ch >= 0 ? "+" : ""}${(ch * 100).toFixed(1).replace(".", ",")} %</span>`;
+    $("smcChips").innerHTML = smChips(x) || `<span class="chip lv">Không có OB còn hiệu lực gần giá</span>`;
+    smDraw(x);
+    document.querySelectorAll("#smcList tr[data-smc]").forEach((r) => r.classList.toggle("on", r.dataset.smc === smSym));
+  }
+  async function renderSmc() {
+    if (!SM) SM = await getJ("data/smc.json");
+    if (!SM || !SM.symbols || !SM.symbols.length) { $("smcStrip").innerHTML = "<b>Chưa có dữ liệu.</b> Job sau phiên 15:40 chưa chạy bản có Order BK."; return; }
+    $("smcKicker").textContent = `phiên ${dmy(SM.trade_date)}`;
+    const list = SM.symbols.slice().sort((a, b) => smRank(a) - smRank(b) || a.symbol.localeCompare(b.symbol));
+    const inz = list.filter((x) => x.zones.some((z) => z.pos === "in")).length, near = list.filter((x) => x.zones.some((z) => z.pos !== "far")).length;
+    $("smcStrip").innerHTML = `<b>${inz}</b> mã đang nằm trong vùng OB/Breaker, <b>${near - inz}</b> mã cách vùng ≤ 1 ATR. Đo 11 năm: chạm OB <b>không</b> tốt hơn mua bừa, nên xem đây là bản đồ vùng và mốc dừng lỗ.`;
+    $("smcSym").innerHTML = SM.symbols.map((x) => `<option value="${x.symbol}">${x.symbol}</option>`).join("");
+    $("smcList").innerHTML = `<h4>39 mã · gần vùng xếp trước</h4><table><thead><tr><th>Mã</th><th>Giá</th><th style="text-align:left">Trạng thái</th></tr></thead><tbody>` +
+      list.map((x) => `<tr data-smc="${x.symbol}"><td>${x.symbol}</td><td>${smP(x.close)}</td><td class="l"><div class="chips">${smChips(x) || '<span class="chip lv">—</span>'}</div></td></tr>`).join("") + "</tbody></table>";
+    smShow(smSym || list[0].symbol);
+  }
+  $("smcSym").addEventListener("change", (e) => smShow(e.target.value));
+  $("smcList").addEventListener("click", (e) => { const r = e.target.closest("tr[data-smc]"); if (r) { smShow(r.dataset.smc); $("main").scrollTop = 0; } });
+  $("smcSpan").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-span]"); if (!b || !SM) return;
+    smSpan = +b.dataset.span;
+    document.querySelectorAll("#smcSpan button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+    smShow(smSym);
+  });
+  $("smcLayers").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-layer]"); if (!b) return;
+    smLayer[b.dataset.layer] = !smLayer[b.dataset.layer];
+    try { localStorage.setItem("pp-smc-layers", JSON.stringify(smLayer)); } catch (_) { /* bỏ qua */ }
+    smLayers();
+  });
+
   // ---------------------------------------------------------------- tab + khởi động
   const tabs = document.querySelectorAll('nav[role="tablist"] button');
   function switchTab(name) {
@@ -1124,11 +1254,12 @@
     if (name === "zone") renderZone();
     if (name === "spike") renderSpike();
     if (name === "algo") renderAlgo();
+    if (name === "smc") renderSmc();
   }
   tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
-  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|spike|algo|settings)$/ : /^#(zone|spike|algo|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
+  function applyHash() { const m = (LEGACY ? /^#(today|history|chart|zone|spike|algo|smc|settings)$/ : /^#(zone|spike|algo|smc|settings)$/).exec(location.hash); switchTab(m ? m[1] : "zone"); }
   window.addEventListener("hashchange", applyHash);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW).catch(() => {});
   load().then(() => { applyHash(); pushStatus(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } if ($("p-spike").classList.contains("on")) { SP = null; renderSpike(); } if ($("p-algo").classList.contains("on")) { AI = null; for (const k in AD) delete AD[k]; renderAlgo(); } } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); if ($("p-zone").classList.contains("on")) { Z = null; renderZone(); } if ($("p-spike").classList.contains("on")) { SP = null; renderSpike(); } if ($("p-algo").classList.contains("on")) { AI = null; for (const k in AD) delete AD[k]; renderAlgo(); } if ($("p-smc").classList.contains("on")) { SM = null; renderSmc(); } } });
 })();
