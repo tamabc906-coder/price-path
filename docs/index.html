@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -227,6 +227,54 @@
       <div id="subCodeWrap"></div>
       <div class="more" id="pushHelp">Sau phiên (~15:50 T2–T6, khi gom xong khớp lệnh) app báo mã đạt <b>một trong hai</b>: <b>(1)</b> giá đóng cửa phá lên VAH hoặc thủng VAL của vùng 10 / 20 / 40 phiên, có <b>cá mập</b> (lệnh ≥ 500 triệu đ) mua/bán chủ động ròng cùng chiều; <b>(2)</b> giá cá mập mua chủ động nhiều nhất và bán chủ động nhiều nhất <b>mới</b> dồn về cách nhau ≤ 0,3. Mỗi mã báo một lần mỗi phiên; quá 6 mã → một thông báo gộp. Bấm thông báo mở tab Vùng giá. <br><b>Chuông KL đột biến</b> (~15:40, job sau phiên): mã có KL ≥ 2× TB 20 phiên trước, nến xanh, giá tăng ≥ 3 %. Quá 6 mã → một thông báo gộp. Bấm mở tab KL đột biến.</div>
       <div class="srow" id="thresholds"></div>
+    </div></div>
+    <div class="sec"><div class="card gl" id="smcGuide">
+      <h3>02 · Order BK: đọc ký hiệu và cách dùng</h3>
+      <details open><summary>Cấu trúc giá</summary>
+        <dl>
+          <dt>HH · HL</dt><dd>Đỉnh sau cao hơn đỉnh trước · đáy sau cao hơn đáy trước → xu hướng tăng. Một đỉnh/đáy phải cao/thấp hơn 2 nến mỗi bên, nên 2 phiên sau mới biết chắc.</dd>
+          <dt>LH · LL</dt><dd>Đỉnh sau thấp hơn · đáy sau thấp hơn → xu hướng giảm.</dd>
+          <dt class="u">BOS</dt><dd>Break of Structure: đường đứt từ một đỉnh/đáy tới phiên giá <b>đóng cửa</b> vượt qua. Phá <b>cùng chiều</b> lần phá trước = xu hướng cũ đi tiếp. BOS↑ xanh, BOS↓ đỏ.</dd>
+          <dt class="y">CHoCH</dt><dd>Change of Character: cũng là một lần phá, nhưng <b>ngược chiều</b> lần trước (đang giảm mà vượt đỉnh, đang tăng mà thủng đáy). Dấu hiệu đầu tiên xu hướng có thể đổi chiều.</dd>
+        </dl>
+      </details>
+      <details><summary>Vùng giá</summary>
+        <dl>
+          <dt class="u">Bull OB</dt><dd>Hộp xanh: cây nến đỏ cuối cùng trước một nhịp tăng mạnh (≥ 1,5 ATR trong 3 phiên) có phá đỉnh. Vùng = đáy tới đỉnh cây nến đó. Theo SMC là nơi tiền lớn gom hàng, giá quay lại sẽ đỡ.</dd>
+          <dt class="d">Bear OB</dt><dd>Hộp đỏ: cây nến xanh cuối cùng trước một nhịp giảm mạnh có phá đáy. Theo SMC giá hồi lên sẽ bị chặn.</dd>
+          <dt>MT</dt><dd>Mean Threshold: đường đứt giữa hộp (50 %). Theo SMC, giá xuyên quá MT là vùng đã yếu.</dd>
+          <dt>Mitigation</dt><dd>Chấm tròn: lần đầu giá quay lại chạm hộp; hộp dừng ở đây. Chấm đen = đóng cửa giữ vùng, chấm vàng = đóng cửa thủng vùng. Sau lần chạm đầu, theo SMC vùng đã "dùng" và yếu đi.</dd>
+          <dt class="d">BB</dt><dd>Breaker Block, viền đỏ đứt: Bull OB đã bị đóng cửa thủng; theo SMC vùng đỡ cũ thành vùng <b>cản</b>. ▼ = lúc giá hồi lên chạm lại.</dd>
+          <dt class="b">FVG</dt><dd>Fair Value Gap, hộp xanh dương: khoảng trống do giá chạy quá nhanh (đáy nến 3 cao hơn đỉnh nến 1). Theo SMC giá hay quay về lấp. Hộp dừng khi giá lấp kín hoặc sau 20 phiên; chỉ vẽ khoảng ≥ 0,5 ATR.</dd>
+          <dt>Quét thanh khoản</dt><dd>Nến có râu đâm xuyên hẳn một vùng rồi đóng cửa quay lại (quét lệnh dừng lỗ đặt dưới/trên vùng). App không gắn nhãn riêng, nhìn bằng mắt.</dd>
+        </dl>
+      </details>
+      <details><summary>Đọc danh sách 39 mã</summary>
+        <dl>
+          <dt>Trong …</dt><dd>Giá đóng cửa hôm nay nằm trong hộp.</dd>
+          <dt>Gần, dưới …</dt><dd>Hộp nằm ngay <b>dưới</b> giá, cách ≤ 1 ATR (biên độ trung bình một phiên) → vùng đỡ gần.</dd>
+          <dt>Gần, trên …</dt><dd>Hộp nằm ngay <b>trên</b> giá, cách ≤ 1 ATR → vùng cản gần.</dd>
+          <dt>CHoCH↓ 2 phiên trước</dt><dd>Lần phá cấu trúc gần nhất, chiều và cách đây bao nhiêu phiên.</dd>
+        </dl>
+      </details>
+      <details open><summary>Cách dùng: số đo khác lý thuyết</summary>
+        <p>Đo 39 mã KingStock, nến ngày 2016–2026, mua giá mở cửa phiên sau, giữ 10 phiên, đã trừ phí, so với mua bừa cùng năm:</p>
+        <table class="gl-t">
+          <tr><th>SMC nói</th><th>Số đo</th></tr>
+          <tr><td>Giá chạm Bull OB thì mua</td><td class="d">−0,41 %, kém mua bừa</td></tr>
+          <tr><td>Thêm FVG / MT / khối lượng lớn thì chắc hơn</td><td class="d">vẫn âm</td></tr>
+          <tr><td>OB vừa hình thành mạnh nhất</td><td class="d">tệ nhất: −0,80 %</td></tr>
+          <tr><td>Giá thủng OB thì cắt lỗ</td><td class="u">ngược lại +0,91 % (mẫu nhỏ)</td></tr>
+          <tr><td>Bear OB / Breaker là chỗ thoát hàng</td><td>không ổn định</td></tr>
+        </table>
+        <ul>
+          <li><b>Đừng</b> mua chỉ vì giá về Bull OB, đừng bán chỉ vì giá chạm Bear OB hay BB.</li>
+          <li><b>Đặt dừng lỗ:</b> mua vì lý do khác thì đặt dừng lỗ dưới đáy Bull OB gần nhất (hoặc dưới đáy râu quét). Đó là đáy của nhịp tăng gần nhất, mốc hợp lý về rủi ro.</li>
+          <li><b>Đặt kỳ vọng chốt lời:</b> Bear OB / BB ngay phía trên là chỗ giá có thể chững lại. Không chắc giá dừng ở đó.</li>
+          <li><b>Biết bối cảnh:</b> CHoCH mới cho biết cấu trúc vừa đổi chiều. Là thông tin để đọc, không phải lệnh.</li>
+        </ul>
+        <p class="ex"><b>Ví dụ SSI phiên 06/10</b> (giá 19,75, ATR 0,56): dưới có Bull OB 19,4–19,7 (đã chạm 14/09), hôm nay râu quét xuống 19,0 rồi đóng 19,75; trên có BB 20,3–20,65 (Bull OB cũ bị thủng 28/09); cấu trúc CHoCH↓ 02/10. Đọc: chạm-giữ OB không phải tín hiệu mua; dừng lỗ hợp lý dưới 19,0 (~−4 %); vùng chững gần là 20,3–20,65 (~+3 %); chưa có CHoCH↑ để coi là đảo chiều.</p>
+      </details>
     </div></div>
     <div class="sec" hidden><div class="card"><h3>02 · Lớp máy học (LightGBM) — xác suất hướng</h3><div id="gateBody"></div></div></div>
     <div class="sec" hidden><div class="card"><h3>03 · Nón</h3><div id="coneParams"></div></div></div>
