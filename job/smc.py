@@ -85,6 +85,40 @@ def structure_events(h: list, l: list, c: list) -> tuple[list, list]:
     return swings, breaks
 
 
+CISD_RUN, CISD_LOOK, CISD_LIFE = 2, 10, 20
+
+
+def cisd_events(o: list, h: list, l: list, c: list) -> list:
+    """CISD (ICT, chưa đo — chỉ để vẽ). Chuỗi ≥ 2 nến đỏ liên tiếp có Low thấp nhất 10 phiên → phiên đầu tiên đóng cửa
+    trên giá MỞ CỬA nến đỏ đầu chuỗi = CISD↑. Chuỗi mới đủ điều kiện thay chuỗi cũ; quá 20 phiên thì bỏ. CISD↓ đối xứng.
+    Chuỗi chỉ được biết khi nó kết thúc (phiên t không cùng màu) → không nhìn trước."""
+    n = len(c)
+    out = []
+    act = {True: None, False: None}          # up=True: chờ CISD↑ sau chuỗi đỏ; False: chờ CISD↓ sau chuỗi xanh
+    for t in range(1, n):
+        for up in (True, False):
+            same = (lambda i: c[i] < o[i]) if up else (lambda i: c[i] > o[i])
+            if not same(t) and same(t - 1):
+                s = t - 1
+                while s - 1 >= 0 and same(s - 1):
+                    s -= 1
+                if t - s >= CISD_RUN:
+                    w0 = max(0, t - CISD_LOOK)
+                    ok = (min(l[s:t]) <= min(l[w0:t])) if up else (max(h[s:t]) >= max(h[w0:t]))
+                    if ok:
+                        act[up] = {"s": s, "end": t - 1, "p": o[s]}
+            a = act[up]
+            if a is None:
+                continue
+            if t - a["end"] > CISD_LIFE:
+                act[up] = None
+                continue
+            if (up and c[t] > a["p"]) or (not up and c[t] < a["p"]):
+                out.append({"s": a["s"], "t": t, "p": a["p"], "up": up})
+                act[up] = None
+    return out
+
+
 def fvg_events(h: list, l: list, a: list) -> list:
     out = []
     n = len(h)
@@ -174,7 +208,8 @@ def analyze(rows: list[list]) -> dict:
             ob["brk_close"], ob["brk"] = breaker(h, c, ob) if bull else (None, None)
             obs.append(ob)
     swings, breaks = structure_events(h, l, c)
-    return {"obs": obs, "swings": swings, "breaks": breaks, "fvgs": fvg_events(h, l, a), "atr": a}
+    return {"obs": obs, "swings": swings, "breaks": breaks, "fvgs": fvg_events(h, l, a), "atr": a,
+            "cisds": cisd_events(o, h, l, c)}
 
 
 def zones_now(rows: list[list], an: dict) -> list:
@@ -227,7 +262,9 @@ def chart(rows: list[list], an: dict, span: int = CHART_N) -> dict:
             "breaks": [{"s": b["s"] - s0, "t": b["t"] - s0, "p": r4(b["p"]), "up": b["up"], "lab": b["lab"]}
                        for b in an["breaks"] if b["s"] >= s0],
             "fvgs": [{"i": f["i"] - s0, "end": f["end"] - s0, "lo": r4(f["lo"]), "hi": r4(f["hi"]), "up": f["up"]}
-                     for f in an["fvgs"] if f["i"] >= s0]}
+                     for f in an["fvgs"] if f["i"] >= s0],
+            "cisds": [{"s": x["s"] - s0, "t": x["t"] - s0, "p": r4(x["p"]), "up": x["up"]}
+                      for x in an["cisds"] if x["s"] >= s0]}
 
 
 def scan(hist: dict, items: list[dict], trade_iso: str) -> dict:

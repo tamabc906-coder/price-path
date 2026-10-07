@@ -1117,7 +1117,7 @@
   // ---------------------------------------------------------------- Order BK (job/smc.py → data/smc.json)
   // Bản đồ ký hiệu SMC trên nến ngày, chép cách vẽ của order-block-lab. Lab đo OB không có lợi thế → chỉ xem, không push.
   let SM = null, smSym = null, smSpan = 60;
-  const smLayer = { struct: true, fvg: true, bb: true, swing: false };
+  const smLayer = { struct: true, fvg: true, bb: true, swing: false, cisd: true };
   try { Object.assign(smLayer, JSON.parse(localStorage.getItem("pp-smc-layers") || "{}")); } catch (_) { /* bỏ qua */ }
   const smP = (v) => (+v.toFixed(2)).toLocaleString("vi-VN");
   const smKind = { bull: "Bull OB", bear: "Bear OB", bb: "Breaker" };
@@ -1145,6 +1145,7 @@
     const breaks = full.breaks.filter((b) => b.s >= s0).map((b) => ({ ...b, s: b.s - s0, t: b.t - s0 }));
     const fvgs = full.fvgs.filter((f) => f.i >= s0).map((f) => ({ ...f, i: f.i - s0, end: f.end - s0 }));
     const swings = full.swings.filter((q) => q.i >= s0).map((q) => ({ ...q, i: q.i - s0 }));
+    const cisds = (full.cisds || []).filter((q) => q.s >= s0).map((q) => ({ ...q, s: q.s - s0, t: q.t - s0 }));
     const W = N > 80 ? 900 : 440, H = 320, padL = 6, padR = 44, padT = 14, padB = 22;
     const cw = (W - padL - padR) / n;
     let lo = Infinity, hi = -Infinity;
@@ -1158,7 +1159,7 @@
       const w = t.length * 6 + 6, xa = anchor === "middle" ? x0 - w / 2 : x0;
       return `<rect x="${xa}" y="${yy - 9}" width="${w}" height="12" rx="2" fill="rgba(255,255,255,.85)"/><text class="lb" x="${xa + 3}" y="${yy}" style="fill:${col}">${t}</text>`;
     };
-    let grid = "", fvg = "", obs = "", bb = "", cand = "", struct = "", swing = "", txt = "", marks = "";
+    let grid = "", fvg = "", obs = "", bb = "", cand = "", struct = "", swing = "", cisd = "", txt = "", marks = "";
     const step = Math.pow(10, Math.floor(Math.log10(span / 4)));
     const tick = [1, 2, 5, 10].map((m) => m * step).find((t) => span / t <= 6);
     for (let v = Math.ceil(lo / tick) * tick; v <= hi; v += tick) {
@@ -1192,6 +1193,11 @@
       const col = b.up ? UP : DN, x0 = xc(b.s), x1 = xc(b.t), yy = y(b.p);
       struct += `<line x1="${x0}" x2="${x1}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-dasharray="5 3" stroke-width="1.1"/>` + label((x0 + x1) / 2, b.up ? yy - 3 : yy + 11, b.lab, col, "middle");
     });
+    // CISD: đường chấm từ giá mở cửa nến đầu chuỗi tới phiên đóng cửa vượt mốc
+    cisds.forEach((q) => {
+      const col = q.up ? UP : DN, x0 = xl(q.s), x1 = xc(q.t), yy = y(q.p);
+      cisd += `<line x1="${x0}" x2="${x1}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-dasharray="1.5 2.5" stroke-width="1.4"/>` + label(x1 + 3, q.up ? yy + 11 : yy - 3, "CISD", col);
+    });
     swings.forEach((q) => { swing += `<text class="sw" x="${xc(q.i)}" y="${q.up ? y(q.p) - 4 : y(q.p) + 11}" text-anchor="middle">${q.lab}</text>`; });
     obsAll.forEach((o) => {
       if (o.t == null || o.t >= n) return;
@@ -1200,7 +1206,7 @@
     });
     $("smcChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:${N > 80 ? "760px" : "100%"}" role="img" aria-label="Biểu đồ nến ${x.symbol} với ký hiệu SMC">` +
       grid + `<g data-layer="fvg">${fvg}</g>` + obs + `<g data-layer="bb">${bb}</g>` + cand +
-      `<g data-layer="struct">${struct}</g><g data-layer="swing">${swing}</g>` + txt + marks + "</svg>";
+      `<g data-layer="struct">${struct}</g><g data-layer="swing">${swing}</g><g data-layer="cisd">${cisd}</g>` + txt + marks + "</svg>";
     smLayers();
   }
   function smLayers() {

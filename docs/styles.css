@@ -324,3 +324,4 @@ nav button[aria-selected="true"] { background: var(--brand); color: #fff; font-w
 .gl-t td.d { color: var(--down); font-weight: 600; } .gl-t td.u { color: var(--up); font-weight: 600; }
 .gl .ex { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
 @media (max-width: 380px) { .gl dl { grid-template-columns: 1fr; } .gl dt { white-space: normal; } }
+.smc-lg i.sb-cisd { height: 0; border: 0; border-top: 2px dotted var(--up); background: none; border-radius: 0; }

@@ -64,3 +64,21 @@ def test_scan_shape_and_zones():
     s = out["symbols"][0]
     assert s["symbol"] == "AAA" and len(s["chart"]["ohlc"]) == 80
     assert isinstance(s["zones"], list)
+
+
+def _cisd_rows(last_close):
+    # 10 phiên nền 10–11, rồi 2 nến đỏ tạo đáy (mở 10,5 / 10,2), rồi một nến xanh đóng ở last_close
+    o = [10.5] * 10 + [10.5, 10.2, 9.6]
+    c = [10.6] * 10 + [10.2, 9.7, last_close]
+    h = [11.0] * 10 + [10.6, 10.3, max(10.0, last_close)]
+    l = [10.0] * 10 + [10.1, 9.5, 9.55]
+    return o, h, l, c
+
+
+def test_cisd_up_on_close_above_first_open():
+    ev = [e for e in smc.cisd_events(*_cisd_rows(10.6)) if e["up"]]
+    assert ev and ev[-1]["s"] == 10 and ev[-1]["t"] == 12 and ev[-1]["p"] == 10.5
+
+
+def test_no_cisd_below_first_open():
+    assert not [e for e in smc.cisd_events(*_cisd_rows(10.4)) if e["up"]]

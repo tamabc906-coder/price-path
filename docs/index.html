@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -202,12 +202,13 @@
     <div class="chips pad" id="smcChips"></div>
     <div class="cone big smc-wrap" id="smcChart"></div>
     <div class="sort" id="smcSpan"><span class="k">Phiên</span><button type="button" data-span="60" aria-pressed="true">60</button><button type="button" data-span="120" aria-pressed="false">120</button></div>
-    <div class="sort" id="smcLayers"><span class="k">Lớp</span><button type="button" data-layer="struct">BOS/CHoCH</button><button type="button" data-layer="fvg">FVG</button><button type="button" data-layer="bb">Breaker</button><button type="button" data-layer="swing">HH/HL</button></div>
+    <div class="sort" id="smcLayers"><span class="k">Lớp</span><button type="button" data-layer="struct">BOS/CHoCH</button><button type="button" data-layer="fvg">FVG</button><button type="button" data-layer="bb">Breaker</button><button type="button" data-layer="swing">HH/HL</button><button type="button" data-layer="cisd">CISD</button></div>
     <div class="legend smc-lg">
       <span><i class="sb-bull"></i>Bull OB</span>
       <span><i class="sb-bear"></i>Bear OB</span>
       <span><i class="sb-bb"></i>BB · ▼ hồi lên chạm lại</span>
       <span><i class="sb-fvg"></i>FVG</span>
+      <span><i class="sb-cisd"></i>CISD</span>
       <span><i class="sb-dot"></i>Mitigation giữ vùng</span>
       <span><i class="sb-dot w"></i>Mitigation thủng vùng</span>
     </div>
@@ -236,6 +237,7 @@
           <dt>LH · LL</dt><dd>Đỉnh sau thấp hơn · đáy sau thấp hơn → xu hướng giảm.</dd>
           <dt class="u">BOS</dt><dd>Break of Structure: đường đứt từ một đỉnh/đáy tới phiên giá <b>đóng cửa</b> vượt qua. Phá <b>cùng chiều</b> lần phá trước = xu hướng cũ đi tiếp. BOS↑ xanh, BOS↓ đỏ.</dd>
           <dt class="y">CHoCH</dt><dd>Change of Character: cũng là một lần phá, nhưng <b>ngược chiều</b> lần trước (đang giảm mà vượt đỉnh, đang tăng mà thủng đáy). Dấu hiệu đầu tiên xu hướng có thể đổi chiều.</dd>
+          <dt class="u">CISD</dt><dd>Change in State of Delivery (đường <b>chấm</b>): sau một chuỗi ≥ 2 nến đỏ tạo đáy thấp nhất 10 phiên, phiên đầu tiên <b>đóng cửa trên giá mở cửa của nến đỏ đầu chuỗi</b> = CISD tăng (xanh); ngược lại là CISD giảm (đỏ). Mốc là giá mở cửa chứ không phải đỉnh/đáy swing, nên báo <b>sớm hơn CHoCH</b> nhưng nhiễu hơn. <b>Chưa đo</b> lợi thế, chỉ để xem.</dd>
         </dl>
       </details>
       <details><summary>Vùng giá</summary>
@@ -296,6 +298,6 @@
 
 <div class="toast" id="toast"><b id="toastTitle"></b><span id="toastBody"></span></div>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>
